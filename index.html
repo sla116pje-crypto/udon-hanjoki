@@ -66,8 +66,23 @@ const px=(a,b,c)=>{x.fillStyle=c;x.fillRect(a|0,b|0,1,1);};
 const rct=(a,b,w,h,c)=>{x.fillStyle=c;x.fillRect(a|0,b|0,w|0,h|0);};
 const dith=(a,b)=>((a+b)&1)===0;
 function txt(s,a,b,size,color,align='left',bold=true){
+  s=''+s;
   x.font=f(size,bold);x.textAlign=align;x.textBaseline='top';
-  x.fillStyle='#0b0906';x.fillText(s,a+0.5,b+0.5);x.fillStyle=color;x.fillText(s,a,b);}
+  x.fillStyle='#0b0906';x.fillText(s,a+0.5,b+0.5);x.fillStyle=color;x.fillText(s,a,b);
+  if(s.indexOf('0')>=0)slashZeros(s,a,b,size,color,align,bold);}
+/* 「0」と「8」の判別のため、ゼロに斜線（スラッシュゼロ）を重ねる。任意コンテキスト対応 */
+function slashZeros(s,a,b,size,color,align,bold){slashZerosOn(x,s,a,b,size,color,align,bold);}
+function slashZerosOn(ctx,s,a,b,size,color,align,bold){
+  s=''+s;if(s.indexOf('0')<0)return;
+  ctx.font=f(size,bold);
+  const total=ctx.measureText(s).width;
+  let cx=align==='center'?a-total/2:align==='right'?a-total:a;
+  const lw=Math.max(1,Math.round(size/11));ctx.lineCap='butt';
+  for(let i=0;i<s.length;i++){const ch=s[i],w=ctx.measureText(ch).width;
+    if(ch==='0'){const px0=cx+w*0.24,px1=cx+w*0.76,py0=b+size*0.20,py1=b+size*0.80;
+      ctx.strokeStyle='#0b0906';ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(px1+0.5,py0+0.5);ctx.lineTo(px0+0.5,py1+0.5);ctx.stroke();
+      ctx.strokeStyle=color;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(px1,py0);ctx.lineTo(px0,py1);ctx.stroke();}
+    cx+=w;}}
 function barUI(a,b,w,h,r,c,bg='#171310'){rct(a,b,w,h,bg);rct(a,b,Math.max(0,Math.min(w,w*r)),h,c);}
 /* --- 音量 --- */
 let VOL={bgm:0.66,voice:1,se:0.66};
@@ -264,6 +279,8 @@ const BG=document.createElement('canvas');BG.width=W*SS;BG.height=H*SS;
   g.fillText('お品書き',14,50);g.fillStyle='#f2e3c2';
   g.fillText('かけ340  月見430  肉540  おろし390',68,50);
   g.fillText('えび天540  かき揚げ510  梅180  のり170',68,66);
+  slashZerosOn(g,'かけ340  月見430  肉540  おろし390',68,50,10,'#f2e3c2','left',true);
+  slashZerosOn(g,'えび天540  かき揚げ510  梅180  のり170',68,66,10,'#f2e3c2','left',true);
   r(0,86,W,COUNTER-86,'#5a4632');
   for(let j=90;j<COUNTER;j+=5)for(let i=0;i<W;i+=2)if(dith(i,j))p(i,j,'#6a5440');
   r(0,COUNTER,W,16,'#8a5a2e');r(0,COUNTER,W,2,'#a56e38');r(0,COUNTER+14,W,2,'#4a3120');
