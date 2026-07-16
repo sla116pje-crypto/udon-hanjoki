@@ -65,9 +65,18 @@ const f=(s,b)=>(b?'bold ':'')+s+'px '+FONT;
 const px=(a,b,c)=>{x.fillStyle=c;x.fillRect(a|0,b|0,1,1);};
 const rct=(a,b,w,h,c)=>{x.fillStyle=c;x.fillRect(a|0,b|0,w|0,h|0);};
 const dith=(a,b)=>((a+b)&1)===0;
-function txt(s,a,b,size,color,align='left',bold=true){
-  x.font=f(size,bold);x.textAlign=align;x.textBaseline='top';
-  x.fillStyle='#0b0906';x.fillText(s,a+0.5,b+0.5);x.fillStyle=color;x.fillText(s,a,b);}
+/* 数字は斜線のないフォント(Arial系)で描く＝0と8がはっきり違う。かな漢字はピクセルフォントのまま */
+const NUMFONT='"Arial","Helvetica Neue","Hiragino Kaku Gothic ProN",sans-serif';
+const nf=(s,b)=>(b?'bold ':'')+s+'px '+NUMFONT;
+const isNumCh=ch=>(ch>='0'&&ch<='9')||ch===','||ch==='.'||ch===':'||ch==='%'||ch==='¥';
+function drawMixed(ctx,s,a,b,size,color,align,bold){
+  s=''+s;const pf=f(size,bold),numf=nf(size,bold);
+  ctx.textBaseline='top';ctx.textAlign='left';
+  let total=0;for(const ch of s){ctx.font=isNumCh(ch)?numf:pf;total+=ctx.measureText(ch).width;}
+  let cx=align==='center'?a-total/2:align==='right'?a-total:a;
+  for(const ch of s){const uN=isNumCh(ch);ctx.font=uN?numf:pf;const w=ctx.measureText(ch).width;
+    ctx.fillStyle='#0b0906';ctx.fillText(ch,cx+0.5,b+0.5);ctx.fillStyle=color;ctx.fillText(ch,cx,b);cx+=w;}}
+function txt(s,a,b,size,color,align='left',bold=true){drawMixed(x,s,a,b,size,color,align,bold);}
 function barUI(a,b,w,h,r,c,bg='#171310'){rct(a,b,w,h,bg);rct(a,b,Math.max(0,Math.min(w,w*r)),h,c);}
 /* --- 音量 --- */
 let VOL={bgm:0.66,voice:1,se:0.66};
@@ -262,8 +271,8 @@ const BG=document.createElement('canvas');BG.width=W*SS;BG.height=H*SS;
   r(6,44,348,40,'#3a2818');r(8,46,344,36,'#241a10');
   g.font='bold 10px '+FONT;g.textAlign='left';g.fillStyle='#e8d5a8';
   g.fillText('お品書き',14,50);g.fillStyle='#f2e3c2';
-  g.fillText('かけ340  月見430  肉540  おろし390',68,50);
-  g.fillText('えび天540  かき揚げ510  梅180  のり170',68,66);
+  drawMixed(g,'かけ340  月見430  肉540  おろし390',68,50,10,'#f2e3c2','left',true);
+  drawMixed(g,'えび天540  かき揚げ510  梅180  のり170',68,66,10,'#f2e3c2','left',true);
   r(0,86,W,COUNTER-86,'#5a4632');
   for(let j=90;j<COUNTER;j+=5)for(let i=0;i<W;i+=2)if(dith(i,j))p(i,j,'#6a5440');
   r(0,COUNTER,W,16,'#8a5a2e');r(0,COUNTER,W,2,'#a56e38');r(0,COUNTER+14,W,2,'#4a3120');
@@ -557,7 +566,9 @@ function drawTitle(t){
   DKEYS.forEach((k,i)=>{const bx=32+(i%4)*84,by=200+((i/4)|0)*56;drawBowl(bx,by,k,1.25);
     txt(DISHES[k].name,bx+14,by+18,8,'#f2e3c2','center');txt('¥'+DISHES[k].price,bx+14,by+29,7,'#c8a060','center');});
   if(((t*2)|0)%2)txt('▶ タップして開店',W/2,352,14,'#e8b44a','center');
-  txt('自己ベスト ¥'+best.toLocaleString(),W/2,382,10,'#c8b890','center');
+  rct(W/2-92,372,184,40,'#241a10');rct(W/2-92,372,184,2,'#e8b44a');
+  txt('自己ベスト',W/2,377,10,'#a89878','center');
+  txt('¥'+best.toLocaleString(),W/2,388,22,'#f0c86a','center');
   rct(VOLBTN.x,VOLBTN.y,VOLBTN.w,VOLBTN.h,'#241a10');rct(VOLBTN.x,VOLBTN.y,VOLBTN.w,2,'#4e3722');
   txt('♪ 音量設定',VOLBTN.x+VOLBTN.w/2,VOLBTN.y+7,10,'#c8b890','center');
   txt('声: 効果音ラボ／Font: PixelMplus',W/2,438,8,'#7a705c','center');
