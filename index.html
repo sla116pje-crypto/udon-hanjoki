@@ -301,16 +301,45 @@ function genDish(e){
   const p2=ok.length?ok:['kake'];
   return p2[(Math.random()*p2.length)|0];
 }
-function rankOf(){if(closed)return 'D';if(G.money>=13000&&G.gone===0&&G.waste<=1)return 'S';if(G.money>=8500)return 'A';if(G.money>=5000)return 'B';return 'C';}
+/* 段位ラダー（下位→上位）。clean=離脱0かつ廃棄1以下、perfect=離脱0かつ廃棄0が必要な上位帯 */
+const RANKS=[
+  {r:'C',  min:0},
+  {r:'B',  min:5000},
+  {r:'A',  min:8500},
+  {r:'S',  min:13000, clean:true},
+  {r:'S+', min:16000, clean:true},
+  {r:'SS', min:20000, clean:true},
+  {r:'SSS',min:25000, clean:true},
+  {r:'神', min:31000, clean:true, perfect:true},
+];
+const RANKC={'神':'#ff7ab0','SSS':'#ffd23a','SS':'#f0c86a','S+':'#e8b44a','S':'#e8b44a','A':'#7fae5a','B':'#c8b890','C':'#c8b890','D':'#c8b890'};
+const RANKMSG={'神':'神の手さばき…もはや伝説だ！！！','SSS':'圧倒的な繁盛…全国に名が轟く！','SS':'見事な采配、この店の主だな！','S+':'文句なし、達人の域だ。','S':'完璧な仕事…一人前の証だ。','A':'昼のピークも任せられる！','B':'いい手際。段取りが光る。','C':'まずは一杯ずつ、確実に。','D':'また明日、のれんを出そう。'};
+function rankOf(){if(closed)return 'D';
+  const m=G.money, clean=(G.gone===0&&G.waste<=1), perfect=(G.gone===0&&G.waste===0);
+  for(let i=RANKS.length-1;i>=0;i--){const R=RANKS[i];
+    if(m<R.min)continue; if(R.clean&&!clean)continue; if(R.perfect&&!perfect)continue;
+    return R.r;}
+  return 'C';}
+/* 次段位まで あと¥○○（神に到達したら空）。上位でも常に次の目標が見える */
+function nextRankHint(){const m=G.money;
+  for(const R of RANKS){if(m<R.min)return '▲ 次は '+R.r+'：あと ¥'+(R.min-m).toLocaleString();}
+  return '';}
 function erfc(v){const z=Math.abs(v),t=1/(1+0.5*z);const r=t*Math.exp(-z*z-1.26551223+t*(1.00002368+t*(0.37409196+t*(0.09678418+t*(-0.18628806+t*(0.27886807+t*(-1.13520398+t*(1.48851587+t*(-0.82215223+t*0.17087277)))))))));return v>=0?r:2-r;}
-function hensa(){const m=G?G.money:0;return Math.max(28,Math.min(99,Math.round(50+10*(m-6000)/3500)));}
+function hensa(){const m=G?G.money:0;
+  const h = m<=13000 ? 50+20*(m-6000)/7000 : 70+29*(m-13000)/32000;   // 6k→50, 13k→70, 45k→99（上位で伸び続ける）
+  return Math.max(28,Math.min(99,Math.round(h)));}
 function topPct(){const z=(hensa()-50)/10,q=0.5*erfc(z/Math.SQRT2)*100;return q<10?Math.max(0.1,+q.toFixed(1)):Math.round(q);}
 /* ============================ シェア ============================ */
 let shareMsgT=0, shareMsg='', shareFile=null, shareBlob=null, shareCapPending=false, confetti=[], resultFlash=0;
 function enterResult(cl){closed=cl;setState('result');SE.over();playBGM('result');saveBest();
   shareCapPending=true;confetti=[];resultFlash=0;
-  if(hensa()>=70){resultFlash=1;SE.jingle();setTimeout(()=>SE.jingle(),200);
-    for(let i=0;i<90;i++)confetti.push({x:Math.random()*W,y:-Math.random()*H*0.6,vx:(Math.random()-.5)*30,vy:35+Math.random()*55,
+  const rk=rankOf();
+  const big=(rk==='神'||rk==='SSS'||rk==='SS');   // 上位帯は盛大に
+  const win=(rk==='S'||rk==='S+'||big);
+  if(win){resultFlash=1;SE.jingle();setTimeout(()=>SE.jingle(),200);
+    if(rk==='神')setTimeout(()=>SE.jingle(),400);   // 神は三段ファンファーレ
+    const N=big?160:80;
+    for(let i=0;i<N;i++)confetti.push({x:Math.random()*W,y:-Math.random()*H*0.6,vx:(Math.random()-.5)*30,vy:35+Math.random()*55,
       c:['#e8b44a','#e0604a','#7fae5a','#4a7ab0','#f0c86a','#f08a9a'][(Math.random()*6)|0],r:Math.random()*6.28,rv:(Math.random()-.5)*9});}}
 function captureShare(){try{cv.toBlob(b=>{if(!b)return;shareBlob=b;try{shareFile=new File([b],'udon-score.png',{type:'image/png'});}catch(e){shareFile=null;}},'image/png');}catch(e){}}
 function doShare(){const text='「うどん繁盛記」売上¥'+G.money.toLocaleString()+'・ランク'+rankOf()+'・実力偏差値'+hensa()+'！ #うどん繁盛記';
@@ -548,7 +577,7 @@ function drawResult(t){
   if(resultFlash>0)rct(0,0,W,H,'rgba(240,200,106,'+(resultFlash*0.35)+')');
   confetti.forEach(p=>{x.save();x.translate(p.x,p.y);x.rotate(p.r);x.fillStyle=p.c;x.fillRect(-3,-4,6,8);x.restore();});
   const rank=rankOf(), hv=hensa(), tp=topPct();
-  const rc=rank==='S'?'#e8b44a':rank==='A'?'#7fae5a':rank==='B'?'#c8b890':'#c8b890';
+  const rc=RANKC[rank]||'#c8b890';
   txt(closed?'閉  店':'営業終了！',W/2,22,14,closed?'#e0604a':'#c8b890','center');
   txt('本日の売上',W/2,46,10,'#a89878','center');
   txt('¥'+G.money.toLocaleString(),W/2,59,38,'#e8b44a','center');
@@ -556,15 +585,17 @@ function drawResult(t){
   txt('実力偏差値（推定）',W/2,120,10,'#a89878','center');
   txt(''+hv,W/2,132,32,hv>=70?'#f0c86a':'#f2e3c2','center');
   txt('推定 全国上位 '+tp+'%',W/2,172,11,hv>=65?'#e8b44a':'#8b90a8','center');
-  rct(W/2-34,194,68,20,'#241a10');rct(W/2-34,194,68,2,rc);txt('ランク '+rank,W/2,199,11,rc,'center');
-  if(hv>=70){const bl=((t*3)|0)%2;txt('★ 全国トップクラスの腕前！ ★',W/2,222,12,bl?'#f0c86a':'#e8b44a','center');}
-  else if(rank==='A')txt('あと少しでS…売上13,000＋離脱0＋廃棄1以下',W/2,223,8,'#8b90a8','center');
+  rct(W/2-44,194,88,20,'#241a10');rct(W/2-44,194,88,2,rc);txt('ランク '+rank,W/2,199,12,rc,'center');
+  const topTier=(rank==='神'||rank==='SSS'||rank==='SS'||rank==='S+');
+  if(rank==='神'){const bl=((t*4)|0)%2;txt('☆ 神 業 ☆ 全国の頂点だ！',W/2,220,12,bl?'#ff9ac4':'#f0c86a','center');}
+  else if(topTier){const bl=((t*3)|0)%2;txt('★ '+rank+' 到達！ 達人の域だ ★',W/2,220,11,bl?'#f0c86a':'#e8b44a','center');}
+  else if(rank==='S'){const bl=((t*3)|0)%2;txt('★ S ランク！ 一人前だ ★',W/2,220,11,bl?'#f0c86a':'#e8b44a','center');}
+  const nh=nextRankHint();
+  if(nh)txt(nh,W/2,234,9,'#e8b44a','center');
+  else txt('▲ 全段位制覇！ もはや敵なし',W/2,234,9,'#ff9ac4','center');
   txt('提供 '+G.served+'人   帰宅 '+G.gone+'人   廃棄 '+G.waste+'品',W/2,244,9,'#c8b890','center');
   txt('最大連続 ×'+G.maxCombo+'   評判 '+Math.round(G.rep)+'/100',W/2,260,9,'#c8b890','center');
-  let msg='まずは一杯ずつ、確実に。';
-  if(rank==='S')msg='完璧な仕事…伝説の釜番だ！！';else if(rank==='A')msg='昼のピークも任せられる！';
-  else if(rank==='B')msg='いい手際。段取りが光る。';else if(rank==='D')msg='また明日、のれんを出そう。';
-  txt(msg,W/2,284,10,'#e0c98a','center');
+  txt(RANKMSG[rank]||'まずは一杯ずつ、確実に。',W/2,284,10,'#e0c98a','center');
   rct(SHAREBTN.x,SHAREBTN.y,SHAREBTN.w,SHAREBTN.h,'#2e5a8c');rct(SHAREBTN.x,SHAREBTN.y,SHAREBTN.w,2,'#4a7ab0');
   txt('📱 スコアをシェア',SHAREBTN.x+SHAREBTN.w/2,SHAREBTN.y+9,13,'#f6ecd8','center');
   if(shareMsgT>0)txt(shareMsg||'画像を保存しました！',W/2,374,9,'#7fae5a','center');
