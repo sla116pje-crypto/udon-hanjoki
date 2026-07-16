@@ -132,6 +132,9 @@ function bgmStop(){BGM.on=false;}
 /* ============================ スプライト ============================ */
 function spr(map,ox,oy,pal,sc=1){for(let j=0;j<map.length;j++)for(let i=0;i<map[j].length;i++){
   const ch=map[j][i];if(ch==='.')continue;const c=pal[ch];if(!c)continue;x.fillStyle=c;x.fillRect(ox+i*sc,oy+j*sc,sc,sc);}}
+function sprW(map){let w=0;for(const r of map)if(r.length>w)w=r.length;return w;}
+/* スプライトを (cx,cy) 中心に描く */
+function sprC(map,cx,cy,pal,sc){spr(map,Math.round(cx-sprW(map)*sc/2),Math.round(cy-map.length*sc/2),pal,sc);}
 const CHEF=[[
 '....kkkkkkkk....','...khhhhhhhhk...','...khhhhhhhhk...','...kSSSSSSSSk...','...kSeSSSSeSk...','...kSSSSSSSSk...',
 '...kSSSmmSSSk...','....SSSSSSSS....','...wwwwwwwwww...','..wwwwwwwwwwww..','.wwwwwwwwwwwwWW.','.Wwwwwwwwwwwww..',
@@ -181,11 +184,19 @@ function drawOnigiri(a,b,sc,variant){spr(variant==='ume'?ONI_UME:ONI_NORI,a,b,ON
 const SP_DAIKON=['.g.g.g..','.ggggg..','..gwg...','..www...','.wwww...','.wwww...','.wwww...','..ww....','..w.....'];
 const SP_DAIKON_PAL={g:'#5aa84e',w:'#f4f1e6'};
 function drawDaikon(a,b,sc){spr(SP_DAIKON,a,b,SP_DAIKON_PAL,sc);}
-/* 白いうどん麺（釜の絵） */
-function drawNoodleIcon(a,b,sc){
-  const c1='#f6ecd6',c2='#e6dcc0';
-  for(let i=0;i<4;i++){rct(a+i*3*sc,b+(i%2)*sc,3*sc,2*sc,c1);rct(a+i*3*sc,b+(i%2)*sc+2*sc,3*sc,sc,c2);}
-  rct(a+2*sc,b+3*sc,8*sc,2*sc,c1);}
+/* 白いうどん麺の束（釜の絵） */
+const SP_NOODLE=[
+'..wwwwwwww..',
+'.wwwwwwwwww.',
+'wwwwwwwwwwww',
+'.dddddddddd.',
+'wwwwwwwwwwww',
+'wwwwwwwwwwww',
+'.dddddddddd.',
+'wwwwwwwwwwww',
+'.wwwwwwwwww.',
+'..wwwwwwww..'];
+const SP_NOODLE_PAL={w:'#f8f1dd',d:'#cbbd9c'};
 /* トッピングを丼の内側に収めて描く（a,b=丼左上） */
 function drawTop(top,a,b,sc){
   const L=(i,j,w,h,c)=>rct(a+i*sc,b+j*sc,w*sc,h*sc,c);
@@ -211,22 +222,20 @@ function drawBeefBit(a,b,sc=1){rct(a,b,10*sc,4*sc,'#9a5228');rct(a,b,10*sc,1*sc,
 function drawOroshiBit(a,b,sc=1){rct(a+1,b+1,7*sc,4*sc,'#f2efe2');rct(a+2,b,4*sc,2*sc,'#fbf8ee');}
 /* ============================ レイアウト ============================ */
 const CUSTX=[4,94,184,274];
-const CARDY=104, CUSTY=142, COUNTER=168, STAFFY=180;
-/* 1段目: 釜×3（大きめ）→ うどんストック */
-const EQY1=226;
-const KAMA=[{x:8},{x:70},{x:132}].map(o=>({...o,y:EQY1,w:58,h:50}));
-const UDONZ={x:198,y:EQY1,w:154,h:50};
-/* 2段目: えび天F+S / かき揚げF+S（大きめ2ペア） */
-const EQY2=300;
-const FRYG=[{k:'ebiten',x:8,sx:76},{k:'kakiage',x:190,sx:258}].map(o=>({...o,y:EQY2,w:62,h:50,sw:70}));
-/* 3段目: 卵台 / 肉鍋 / おろし器（各＋ストック） */
-const EQY3=374;
-const EGG ={x:8,y:EQY3,w:46,h:46};  const EGGZ={x:58, y:EQY3,w:52,h:46};
-const NIKU={x:124,y:EQY3,w:46,h:46};const NIKUZ={x:174,y:EQY3,w:52,h:46};
-const ORO ={x:240,y:EQY3,w:46,h:46};const OROZ={x:290,y:EQY3,w:62,h:46};
-/* 4段目: おにぎり台 横幅いっぱい（梅｜のり 2大ボタン） */
-const EQY4=444;
-const ONIG={x:8,y:EQY4,w:344,h:46};
+const CARDY=104, CUSTY=142, COUNTER=168, STAFFY=182;
+/* 1段目: 釜×3 → うどんストック */
+const EQY1=232;
+const KAMA=[{x:8},{x:70},{x:132}].map(o=>({...o,y:EQY1,w:58,h:54}));
+const UDONZ={x:198,y:EQY1,w:154,h:54};
+/* 2段目: えび天F+S / かき揚げF+S / 卵台+S */
+const EQY2=316;
+const FRYG=[{k:'ebiten',x:8,sx:68},{k:'kakiage',x:132,sx:192}].map(o=>({...o,y:EQY2,w:56,h:54,sw:56}));
+const EGG ={x:256,y:EQY2,w:44,h:54}; const EGGZ={x:304,y:EQY2,w:48,h:54};
+/* 3段目: 肉鍋+S / おろし器+S / おにぎり台(梅=上/のり=下)+S */
+const EQY3=400;
+const NIKU={x:8,y:EQY3,w:56,h:54};  const NIKUZ={x:68, y:EQY3,w:56,h:54};
+const ORO ={x:132,y:EQY3,w:56,h:54};const OROZ={x:192,y:EQY3,w:56,h:54};
+const ONIG={x:256,y:EQY3,w:44,h:54};const ONIGZ={x:304,y:EQY3,w:48,h:54};
 const VOLBTN={x:14,y:452,w:96,h:26};
 const SHAREBTN={x:88,y:360,w:184,h:32};
 /* ============================ 背景 ============================ */
@@ -253,7 +262,7 @@ const BG=document.createElement('canvas');BG.width=W*SS;BG.height=H*SS;
   for(let i=0;i<W;i+=24)p(i+11,COUNTER+8,'#6e4a2b');
   r(0,COUNTER+16,W,H-(COUNTER+16),'#3f2f24');
   for(let j=COUNTER+20;j<H;j+=5)for(let i=0;i<W;i+=2)if(dith(i,j))p(i,j,'#4a3728');
-  [EQY1,EQY2,EQY3,EQY4].forEach(y=>{r(0,y-8,W,4,'#6e4a2b');r(0,y-5,W,1,'#4a3120');});
+  [EQY1,EQY2,EQY3].forEach(y=>{r(0,y-8,W,4,'#6e4a2b');r(0,y-5,W,1,'#4a3120');});
 })();
 function counterBand(){rct(0,COUNTER,W,16,'#8a5a2e');rct(0,COUNTER,W,2,'#a56e38');rct(0,COUNTER+14,W,2,'#4a3120');for(let i=0;i<W;i+=24)px(i+11,COUNTER+8,'#6e4a2b');}
 /* ============================ 状態 ============================ */
@@ -347,10 +356,10 @@ function tapNiku(){moveChef(NIKU.x+NIKU.w/2);
   G.nikuSim=0;SE.boil();pop(NIKU.x+24,NIKU.y-2,'牛肉を煮る','#f2e3c2');}
 function tapOro(){moveChef(ORO.x+ORO.w/2);if(G.oroCd>0)return;
   if(G.oroshi>=CFG.oroCap){say('大根おろしがいっぱい');SE.buzz();return;}G.oroshi++;G.oroCd=CFG.oroCd;SE.take();pop(ORO.x+24,ORO.y-2,'大根おろし','#f2e3c2');}
-function tapUme(){moveChef(ONIG.x+12);if(G.umeCd>0)return;
-  if(G.onigUme>=CFG.onigCap){say('梅むすびがいっぱい');SE.buzz();return;}G.onigUme++;G.umeCd=CFG.onigCd;SE.take();pop(ONIG.x+12,ONIG.y-2,'梅むすび','#f2e3c2');}
-function tapNori(){moveChef(ONIG.x+ONIG.w-12);if(G.noriCd>0)return;
-  if(G.onigNori>=CFG.onigCap){say('のりむすびがいっぱい');SE.buzz();return;}G.onigNori++;G.noriCd=CFG.onigCd;SE.take();pop(ONIG.x+ONIG.w-12,ONIG.y-2,'のりむすび','#f2e3c2');}
+function tapUme(){moveChef(ONIG.x+ONIG.w/2);if(G.umeCd>0)return;
+  if(G.onigUme>=CFG.onigCap){say('梅むすびがいっぱい');SE.buzz();return;}G.onigUme++;G.umeCd=CFG.onigCd;SE.take();pop(ONIG.x+ONIG.w/2,ONIG.y-2,'梅むすび','#f2e3c2');}
+function tapNori(){moveChef(ONIG.x+ONIG.w/2);if(G.noriCd>0)return;
+  if(G.onigNori>=CFG.onigCap){say('のりむすびがいっぱい');SE.buzz();return;}G.onigNori++;G.noriCd=CFG.onigCd;SE.take();pop(ONIG.x+ONIG.w/2,ONIG.y+ONIG.h,'のりむすび','#f2e3c2');}
 function tapFry(i){const F=FRYG[i];moveChef(F.x+F.w/2);
   if(G.fry[i].length>=2){say(FRIED[F.k].name+'は2個揚げ中！');SE.buzz();return;}
   if(G.rack.filter(r=>r.k===F.k).length+G.fry[i].length>=4){say('ストックが満杯');SE.buzz();return;}
@@ -395,7 +404,7 @@ cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();
   if(hit(EGG,10))tapEgg();
   if(hit(NIKU,10))tapNiku();
   if(hit(ORO,10))tapOro();
-  if(hit(ONIG,0)){(a<ONIG.x+ONIG.w/2)?tapUme():tapNori();}
+  if(hit(ONIG,4)){(b<ONIG.y+ONIG.h/2)?tapUme():tapNori();}
   CUSTX.forEach((cx,i)=>{if(a>=cx-2&&a<cx+88&&b>=CARDY-6&&b<COUNTER+16)tapCust(i);});
 });
 /* ============================ 描画 ============================ */
@@ -426,7 +435,7 @@ function drawPlay(t){
       if(ready){x.fillStyle='#f6ecd8';for(let m=0;m<6;m++)x.fillRect(K.x+9+m*7,K.y+1+(m%2)*2,5,2);}
       barUI(K.x+4,K.y+K.h-11,K.w-8,4,k.t/(CFG.boil+CFG.golden),ready?'#e8b44a':'#7fae5a');
       if(ready){x.strokeStyle=((t*5)|0)%2?'#f0c86a':'#e8b44a';x.lineWidth=2;x.strokeRect(K.x-1,K.y-6,K.w+2,K.h);txt('湯切り!',K.x+K.w/2,K.y-16,9,'#f0c86a','center');}}
-    else drawNoodleIcon(K.x+K.w/2-6,K.y+6,1.2);});
+    else sprC(SP_NOODLE,K.x+K.w/2,K.y+K.h/2-3,SP_NOODLE_PAL,1.9);});
   txt('ゆで釜',KAMA[0].x,EQY1-16,9,'#c8b890');
   panel(UDONZ.x,UDONZ.y,UDONZ.w,UDONZ.h);txt('うどん'+(G.udon.length||''),UDONZ.x,UDONZ.y-16,9,G.udon.length?'#f2e3c2':'#7a705c');
   G.udon.slice(0,5).forEach((u,i)=>{const a=UDONZ.x+3+i*30,b=UDONZ.y+9;drawBowl(a,b,'kake',1.1);barUI(a,b+16,24,2,1-u.age/CFG.nobi,u.age<CFG.nobi*0.6?'#7fae5a':'#e0604a');});
@@ -434,42 +443,44 @@ function drawPlay(t){
   /* フライヤー2種（各具の絵つき）＋各ストック */
   G.fry.forEach((arr,i)=>{const F=FRYG[i];machine(F.x,F.y,F.w,F.h,'#5a4416');
     txt(FRIED[F.k].name,F.x+F.w/2,F.y-16,9,'#c8b890','center');
-    if(!arr.length)drawTen(F.x+F.w/2-8,F.y+6,F.k,1.3);
+    if(!arr.length){const mp=F.k==='ebiten'?SP_EBI:SP_KAKI,pl=F.k==='ebiten'?SP_EBI_PAL:SP_KAKI_PAL,sc=F.k==='ebiten'?1.9:2.6;sprC(mp,F.x+F.w/2,F.y+F.h/2-3,pl,sc);}
     arr.forEach((fj,j)=>{x.fillStyle='#e8b44a';for(let bb=0;bb<3;bb++){const bx=F.x+8+j*24+((bb*7+((t*12)|0)*4)%16);x.fillRect(bx,F.y-1+((bb*3+((t*9)|0))%4),2,2);}
       drawTen(F.x+5+j*24,F.y+3+j*6,F.k,1.1);barUI(F.x+4,F.y+F.h-11+j*5,F.w-8,3,fj.t/FRIED[F.k].fry,'#e8b44a');});
     const st=G.rack.filter(r=>r.k===F.k);panel(F.sx,F.y,F.sw,F.h);txt('在庫'+(st.length||''),F.sx,F.y-16,9,st.length?'#f2e3c2':'#7a705c');
     st.slice(0,4).forEach((r,n)=>{const a=F.sx+3+(n%2)*32,b=F.y+4+((n/2)|0)*20;drawTen(a,b,F.k,1.2);barUI(a,b+13,22,2,1-r.age/FRIED[F.k].fresh,r.age<FRIED[F.k].fresh*0.6?'#7fae5a':'#e0604a');});});
   /* 卵台（卵1つの絵）＋卵ストック */
-  rct(EGG.x,EGG.y,EGG.w,EGG.h-6,'#6e4a2b');rct(EGG.x+2,EGG.y+2,EGG.w-4,EGG.h-12,'#8a5a2e');drawEgg(EGG.x+EGG.w/2-3,EGG.y+10,1.6);
-  txt('卵台',EGG.x+EGG.w/2,EQY3-16,9,'#c8b890','center');
+  rct(EGG.x,EGG.y,EGG.w,EGG.h-6,'#6e4a2b');rct(EGG.x+2,EGG.y+2,EGG.w-4,EGG.h-12,'#8a5a2e');drawEgg(EGG.x+EGG.w/2-3*2.6,EGG.y+(EGG.h-6)/2-3*2.6,2.6);
+  txt('卵台',EGG.x+EGG.w/2,EQY2-16,9,'#c8b890','center');
   panel(EGGZ.x,EGGZ.y,EGGZ.w,EGGZ.h);txt('卵'+(G.tamago||''),EGGZ.x,EGGZ.y-16,9,G.tamago?'#f2e3c2':'#7a705c');
   for(let n=0;n<G.tamago;n++)drawEgg(EGGZ.x+3+(n%3)*15,EGGZ.y+9+((n/3)|0)*16,1.4);
   /* 肉鍋（牛肉の絵）＋肉ストック */
   machine(NIKU.x,NIKU.y,NIKU.w,NIKU.h,'#5a3418');
   if(G.nikuSim!=null){for(let bb=0;bb<4;bb++){x.fillStyle='#c07a3a';const bx=NIKU.x+9+((bb*9+((t*8)|0)*3)%(NIKU.w-18));x.fillRect(bx,NIKU.y-1+((bb*3+((t*7)|0))%4),2,2);}
-    drawBeefBit(NIKU.x+NIKU.w/2-7,NIKU.y+8,1.4);barUI(NIKU.x+4,NIKU.y+NIKU.h-11,NIKU.w-8,4,G.nikuSim/CFG.nikuSim,'#e8b44a');}
-  else drawBeefBit(NIKU.x+NIKU.w/2-7,NIKU.y+12,1.4);
+    drawBeefBit(NIKU.x+NIKU.w/2-5*2.2,NIKU.y+NIKU.h/2-8,2.2);barUI(NIKU.x+4,NIKU.y+NIKU.h-11,NIKU.w-8,4,G.nikuSim/CFG.nikuSim,'#e8b44a');}
+  else drawBeefBit(NIKU.x+NIKU.w/2-5*2.2,NIKU.y+NIKU.h/2-4,2.2);
   txt('肉鍋',NIKU.x+NIKU.w/2,EQY3-16,9,'#c8b890','center');
   panel(NIKUZ.x,NIKUZ.y,NIKUZ.w,NIKUZ.h);txt('牛肉'+(G.niku||''),NIKUZ.x,NIKUZ.y-16,9,G.niku?'#f2e3c2':'#7a705c');
   for(let n=0;n<G.niku;n++)drawBeefBit(NIKUZ.x+3+(n%2)*24,NIKUZ.y+9+((n/2)|0)*13,1.3);
   /* おろし器（大根の絵）＋おろしストック */
   rct(ORO.x,ORO.y,ORO.w,ORO.h-6,'#6e4a2b');rct(ORO.x+3,ORO.y+3,ORO.w-6,ORO.h-14,'#8a8f9a');
-  for(let r2=0;r2<3;r2++)for(let cc=0;cc<5;cc++)px(ORO.x+7+cc*7,ORO.y+7+r2*5,'#c0c6cc');
-  drawDaikon(ORO.x+ORO.w/2-4,ORO.y+8,1.3);
+  for(let r2=0;r2<4;r2++)for(let cc=0;cc<6;cc++)px(ORO.x+8+cc*7,ORO.y+7+r2*7,'#c0c6cc');
+  sprC(SP_DAIKON,ORO.x+ORO.w/2,ORO.y+(ORO.h-6)/2,SP_DAIKON_PAL,2.4);
   txt('おろし器',ORO.x+ORO.w/2,EQY3-16,9,'#c8b890','center');
   panel(OROZ.x,OROZ.y,OROZ.w,OROZ.h);txt('おろし'+(G.oroshi||''),OROZ.x,OROZ.y-16,9,G.oroshi?'#f2e3c2':'#7a705c');
   for(let n=0;n<G.oroshi;n++)drawOroshiBit(OROZ.x+3+(n%2)*24,OROZ.y+9+((n/2)|0)*12,1.3);
-  /* おにぎり台（横幅いっぱい・梅｜のり 2大ボタン） */
-  const half=ONIG.w/2;
-  rct(ONIG.x,ONIG.y,ONIG.w,ONIG.h,'#6e4a2b');rct(ONIG.x+half-1,ONIG.y,2,ONIG.h,'#3a2818');
+  /* おにぎり台（通常サイズ・上=梅／下=のり）＋にぎりストック */
+  const oh=ONIG.h/2;
+  rct(ONIG.x,ONIG.y,ONIG.w,ONIG.h,'#6e4a2b');
   rct(ONIG.x,ONIG.y,ONIG.w,2,'#8a6134');
-  drawOnigiri(ONIG.x+14,ONIG.y+ONIG.h/2-8,1.5,'ume');
-  drawOnigiri(ONIG.x+half+14,ONIG.y+ONIG.h/2-8,1.5,'nori');
-  txt('梅むすび '+(G.onigUme||''),ONIG.x+40,ONIG.y+9,10,'#f0c0c8','left');
-  txt('タップで握る',ONIG.x+40,ONIG.y+26,8,'#b89aa0','left');
-  txt('のりむすび '+(G.onigNori||''),ONIG.x+half+40,ONIG.y+9,10,'#b8d0be','left');
-  txt('タップで握る',ONIG.x+half+40,ONIG.y+26,8,'#9ab0a0','left');
-  txt('おにぎり台',ONIG.x+ONIG.w/2,EQY4-16,9,'#c8b890','center');
+  rct(ONIG.x,ONIG.y+oh-1,ONIG.w,2,'#3a2818');            // 上下の仕切り
+  drawOnigiri(ONIG.x+3,ONIG.y+3,1.6,'ume');              // 上=梅
+  txt('梅',ONIG.x+ONIG.w-3,ONIG.y+oh/2-4,9,'#f0c0c8','right');
+  drawOnigiri(ONIG.x+3,ONIG.y+oh+3,1.6,'nori');          // 下=のり
+  txt('のり',ONIG.x+ONIG.w-3,ONIG.y+oh+oh/2-4,9,'#b8d0be','right');
+  txt('おにぎり',ONIG.x+ONIG.w/2,EQY3-16,9,'#c8b890','center');
+  panel(ONIGZ.x,ONIGZ.y,ONIGZ.w,ONIGZ.h);txt('在庫'+((G.onigUme+G.onigNori)||''),ONIGZ.x,ONIGZ.y-16,9,(G.onigUme+G.onigNori)?'#f2e3c2':'#7a705c');
+  {let oc=0;for(let n=0;n<G.onigUme;n++){drawOnigiri(ONIGZ.x+3+(oc%2)*22,ONIGZ.y+4+((oc/2)|0)*22,1.4,'ume');oc++;}
+   for(let n=0;n<G.onigNori;n++){drawOnigiri(ONIGZ.x+3+(oc%2)*22,ONIGZ.y+4+((oc/2)|0)*22,1.4,'nori');oc++;}}
   /* 大将（概念は次のキャラ課題で刷新予定・小さく通路に） */
   spr(CHEF[G.chefF],G.chefX-13,STAFFY,CHEF_PAL,1.2);
   G.steam.forEach(s=>{x.fillStyle='rgba(240,246,255,'+(0.5*(1-s.t/1.6))+')';x.fillRect((s.x+Math.sin(s.t*5)*2)|0,s.y|0,s.t<0.9?1:2,1);});
