@@ -505,9 +505,13 @@ function drawPlay(t){
   drawOnigiri(ONIG.x+3,ONIG.y+oh+3,1.6,'nori');          // 下=のり
   txt('のり',ONIG.x+ONIG.w-3,ONIG.y+oh+oh/2-4,9,'#b8d0be','right');
   txt('おにぎり',ONIG.x+ONIG.w/2,EQY3-16,9,'#c8b890','center');
-  panel(ONIGZ.x,ONIGZ.y,ONIGZ.w,ONIGZ.h);txt('在庫'+((G.onigUme+G.onigNori)||''),ONIGZ.x,ONIGZ.y-16,9,(G.onigUme+G.onigNori)?'#f2e3c2':'#7a705c');
-  {let oc=0;for(let n=0;n<G.onigUme;n++){drawOnigiri(ONIGZ.x+3+(oc%2)*22,ONIGZ.y+4+((oc/2)|0)*22,1.4,'ume');oc++;}
-   for(let n=0;n<G.onigNori;n++){drawOnigiri(ONIGZ.x+3+(oc%2)*22,ONIGZ.y+4+((oc/2)|0)*22,1.4,'nori');oc++;}}
+  panel(ONIGZ.x,ONIGZ.y,ONIGZ.w,ONIGZ.h);txt('在庫',ONIGZ.x,ONIGZ.y-16,9,(G.onigUme+G.onigNori)?'#f2e3c2':'#7a705c');
+  const zh=ONIGZ.h/2;
+  rct(ONIGZ.x,ONIGZ.y+zh-1,ONIGZ.w,1,'#3a2818');                                       // 梅とのりを上下で分離
+  drawOnigiri(ONIGZ.x+2,ONIGZ.y+4,1.4,'ume');                                          // 上=梅
+  txt('×'+(G.onigUme||0),ONIGZ.x+ONIGZ.w-3,ONIGZ.y+8,11,G.onigUme?'#f0c0c8':'#7a705c','right');
+  drawOnigiri(ONIGZ.x+2,ONIGZ.y+zh+4,1.4,'nori');                                      // 下=のり
+  txt('×'+(G.onigNori||0),ONIGZ.x+ONIGZ.w-3,ONIGZ.y+zh+8,11,G.onigNori?'#b8d0be':'#7a705c','right');
   /* 大将（概念は次のキャラ課題で刷新予定・小さく通路に） */
   spr(CHEF[G.chefF],G.chefX-13,STAFFY-8,CHEF_PAL,1.6);
   G.steam.forEach(s=>{x.fillStyle='rgba(240,246,255,'+(0.5*(1-s.t/1.6))+')';x.fillRect((s.x+Math.sin(s.t*5)*2)|0,s.y|0,s.t<0.9?1:2,1);});
