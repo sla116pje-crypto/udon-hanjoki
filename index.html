@@ -306,7 +306,7 @@ function erfc(v){const z=Math.abs(v),t=1/(1+0.5*z);const r=t*Math.exp(-z*z-1.265
 function hensa(){const m=G?G.money:0;return Math.max(28,Math.min(99,Math.round(50+10*(m-6000)/3500)));}
 function topPct(){const z=(hensa()-50)/10,q=0.5*erfc(z/Math.SQRT2)*100;return q<10?Math.max(0.1,+q.toFixed(1)):Math.round(q);}
 /* ============================ シェア ============================ */
-let shareMsgT=0, shareFile=null, shareBlob=null, shareCapPending=false, confetti=[], resultFlash=0;
+let shareMsgT=0, shareMsg='', shareFile=null, shareBlob=null, shareCapPending=false, confetti=[], resultFlash=0;
 function enterResult(cl){closed=cl;setState('result');SE.over();playBGM('result');saveBest();
   shareCapPending=true;confetti=[];resultFlash=0;
   if(hensa()>=70){resultFlash=1;SE.jingle();setTimeout(()=>SE.jingle(),200);
@@ -314,9 +314,22 @@ function enterResult(cl){closed=cl;setState('result');SE.over();playBGM('result'
       c:['#e8b44a','#e0604a','#7fae5a','#4a7ab0','#f0c86a','#f08a9a'][(Math.random()*6)|0],r:Math.random()*6.28,rv:(Math.random()-.5)*9});}}
 function captureShare(){try{cv.toBlob(b=>{if(!b)return;shareBlob=b;try{shareFile=new File([b],'udon-score.png',{type:'image/png'});}catch(e){shareFile=null;}},'image/png');}catch(e){}}
 function doShare(){const text='「うどん繁盛記」売上¥'+G.money.toLocaleString()+'・ランク'+rankOf()+'・実力偏差値'+hensa()+'！ #うどん繁盛記';
-  try{if(shareFile&&navigator.canShare&&navigator.canShare({files:[shareFile]})){navigator.share({files:[shareFile],text:text+'\n'+SITE_URL,title:'うどん繁盛記'}).catch(()=>{});return;}
-    if(navigator.share){navigator.share({title:'うどん繁盛記',text:text,url:SITE_URL}).catch(()=>{});return;}}catch(e){}
-  if(shareBlob){const a=document.createElement('a');a.href=URL.createObjectURL(shareBlob);a.download='udon-score.png';a.click();shareMsgT=2.5;setTimeout(()=>URL.revokeObjectURL(a.href),5000);}}
+  const full=text+'\n'+SITE_URL;
+  // ① 画像つきシェア（対応端末）
+  try{if(shareFile&&navigator.canShare&&navigator.canShare({files:[shareFile]})){
+    navigator.share({files:[shareFile],text:full,title:'うどん繁盛記'}).catch(err=>{if(err&&err.name==='AbortError')return;fallbackShare(full);});return;}}catch(e){}
+  // ② テキスト＋URLシェア（画像非対応でも共有シートを出す）
+  try{if(navigator.share){
+    navigator.share({title:'うどん繁盛記',text:text,url:SITE_URL}).catch(err=>{if(err&&err.name==='AbortError')return;fallbackShare(full);});return;}}catch(e){}
+  // ③ 共有API非対応（PC等）
+  fallbackShare(full);}
+function fallbackShare(full){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(full).then(()=>{shareMsg='コピーしました！SNSに貼り付けてね';shareMsgT=3;}).catch(()=>saveShareImg());
+    return;}
+  saveShareImg();}
+function saveShareImg(){if(shareBlob){const a=document.createElement('a');a.href=URL.createObjectURL(shareBlob);a.download='udon-score.png';a.click();shareMsg='画像を保存しました！';shareMsgT=3;setTimeout(()=>URL.revokeObjectURL(a.href),5000);}
+  else{shareMsg='URLをコピーできませんでした';shareMsgT=2.5;}}
 function saveBest(){if(G.money>best){best=G.money;try{localStorage.setItem('udon5_best',best);}catch(e){}}}
 /* ============================ 更新 ============================ */
 function update(dt){
@@ -403,7 +416,7 @@ cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();
       if(a>=bx&&a<bx+70&&b>=by&&b<by+40){VOL[ch]=VOL_STEPS[lv];saveVol();if(ch==='se')SE.coin();if(ch==='voice')voice('happy');}}});
     if(a>=120&&a<240&&b>=410&&b<446){setState('title');SE.take();}return;}
   if(state==='result'){
-    if(a>=SHAREBTN.x&&a<SHAREBTN.x+SHAREBTN.w&&b>=SHAREBTN.y&&b<SHAREBTN.y+SHAREBTN.h){doShare();return;}
+    if(a>=SHAREBTN.x&&a<SHAREBTN.x+SHAREBTN.w&&b>=SHAREBTN.y&&b<SHAREBTN.y+SHAREBTN.h){return;} // シェアはclickで発火（iOS対策）
     if(stateAge()>1){setState('title');SE.take();playBGM('title');}return;}
   G.rip={x:a,y:b,t:0};
   const hit=(z,mx)=>a>=z.x-mx&&a<z.x+z.w+mx&&b>=z.y-16&&b<z.y+z.h+10;
@@ -415,6 +428,12 @@ cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();
   if(hit(ONIG,4)){(b<ONIG.y+ONIG.h/2)?tapUme():tapNori();}
   CUSTX.forEach((cx,i)=>{if(a>=cx-2&&a<cx+88&&b>=CARDY-6&&b<COUNTER+16)tapCust(i);});
 });
+/* シェアはclickイベントから発火：iOS Safariのnavigator.share()はpointerdown/touchstartでは
+   ユーザー操作と認められず失敗する。clickなら有効な一時的アクティベーションが得られる。 */
+cv.addEventListener('click',e=>{if(state!=='result')return;
+  const r=cv.getBoundingClientRect();
+  const a=(e.clientX-r.left)*W/r.width,b=(e.clientY-r.top)*H/r.height;
+  if(a>=SHAREBTN.x&&a<SHAREBTN.x+SHAREBTN.w&&b>=SHAREBTN.y&&b<SHAREBTN.y+SHAREBTN.h)doShare();});
 /* ============================ 描画 ============================ */
 function machine(X,Y,Wd,Hd,liquid){rct(X,Y,Wd,Hd-8,'#55606e');rct(X+3,Y-4,Wd-6,6,'#6a7686');rct(X+3,Y-5,Wd-6,1,'#7e8a9a');rct(X+5,Y-2,Wd-10,4,liquid);}
 function panel(zx,zy,zw,zh){rct(zx-3,zy-3,zw+6,zh+2,'#3a2c1e');rct(zx-3,zy-3,zw+6,2,'#5a4430');}
@@ -544,7 +563,7 @@ function drawResult(t){
   txt(msg,W/2,284,10,'#e0c98a','center');
   rct(SHAREBTN.x,SHAREBTN.y,SHAREBTN.w,SHAREBTN.h,'#2e5a8c');rct(SHAREBTN.x,SHAREBTN.y,SHAREBTN.w,2,'#4a7ab0');
   txt('📱 スコアをシェア',SHAREBTN.x+SHAREBTN.w/2,SHAREBTN.y+9,13,'#f6ecd8','center');
-  if(shareMsgT>0)txt('画像を保存しました！',W/2,374,9,'#7fae5a','center');
+  if(shareMsgT>0)txt(shareMsg||'画像を保存しました！',W/2,374,9,'#7fae5a','center');
   if(stateAge()>1&&((t*2)|0)%2)txt('▶ 画面タップでもういちど',W/2,400,10,'#e8b44a','center');
 }
 /* ============================ ループ ============================ */
