@@ -320,24 +320,35 @@ function rankOf(){
   if(G.money>=5000)return 'B';
   return 'C';
 }
+/* 実力偏差値・推定上位%（オンラインランキング導入までのローカル推定） */
+function erfc(v){const z=Math.abs(v),t=1/(1+0.5*z);
+  const r=t*Math.exp(-z*z-1.26551223+t*(1.00002368+t*(0.37409196+t*(0.09678418+t*(-0.18628806+t*(0.27886807+t*(-1.13520398+t*(1.48851587+t*(-0.82215223+t*0.17087277)))))))));
+  return v>=0?r:2-r;}
+function hensa(){const m=G?G.money:0;return Math.max(28,Math.min(99,Math.round(50+10*(m-6000)/3500)));}
+function topPct(){const z=(hensa()-50)/10,q=0.5*erfc(z/Math.SQRT2)*100;return q<10?Math.max(0.1,+q.toFixed(1)):Math.round(q);}
 /* ============================ スコアシェア ============================ */
-let shareMsgT=0;
+let shareMsgT=0, shareFile=null, shareBlob=null, shareCapPending=false;
+let confetti=[], resultFlash=0;
+function enterResult(cl){closed=cl;setState('result');SE.over();playBGM('result');saveBest();
+  shareCapPending=true;confetti=[];resultFlash=0;
+  if(hensa()>=70){resultFlash=1;SE.jingle();setTimeout(()=>SE.jingle(),200);
+    for(let i=0;i<90;i++)confetti.push({x:Math.random()*W,y:-Math.random()*H*0.6,
+      vx:(Math.random()-.5)*30,vy:35+Math.random()*55,
+      c:['#e8b44a','#e0604a','#7fae5a','#4a7ab0','#f0c86a','#f08a9a'][(Math.random()*6)|0],
+      r:Math.random()*6.28,rv:(Math.random()-.5)*9});}
+}
+/* リザルト画像を事前生成（タップ時は同期でシェア＝共有シートが確実に開く） */
+function captureShare(){try{cv.toBlob(b=>{if(!b)return;shareBlob=b;
+  try{shareFile=new File([b],'udon-score.png',{type:'image/png'});}catch(e){shareFile=null;}},'image/png');}catch(e){}}
 function doShare(){
-  try{cv.toBlob(async blob=>{
-    if(!blob)return;
-    const text='「うどん繁盛記」でランク'+rankOf()+'・売上¥'+G.money.toLocaleString()+'を達成！';
-    try{
-      const file=new File([blob],'udon-hanjoki-score.png',{type:'image/png'});
-      if(navigator.canShare&&navigator.canShare({files:[file]})){
-        await navigator.share({files:[file],title:'うどん繁盛記',text:text+' '+SITE_URL});
-        return;
-      }
-    }catch(e){}
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-    a.download='udon-hanjoki-score.png';a.click();
-    shareMsgT=2.5;
-    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
-  },'image/png');}catch(e){}
+  const text='「うどん繁盛記」売上¥'+G.money.toLocaleString()+'・ランク'+rankOf()+'・実力偏差値'+hensa()+'！ #うどん繁盛記';
+  try{
+    if(shareFile&&navigator.canShare&&navigator.canShare({files:[shareFile]})){
+      navigator.share({files:[shareFile],text:text+'\n'+SITE_URL,title:'うどん繁盛記'}).catch(()=>{});return;}
+    if(navigator.share){navigator.share({title:'うどん繁盛記',text:text,url:SITE_URL}).catch(()=>{});return;}
+  }catch(e){}
+  if(shareBlob){const a=document.createElement('a');a.href=URL.createObjectURL(shareBlob);
+    a.download='udon-score.png';a.click();shareMsgT=2.5;setTimeout(()=>URL.revokeObjectURL(a.href),5000);}
 }
 /* ============================ 更新 ============================ */
 function update(dt){
@@ -380,8 +391,8 @@ function update(dt){
   G.steam.forEach(s=>{s.t+=dt;s.y-=dt*13;});G.steam=G.steam.filter(s=>s.t<1.6);
   if(G.rip){G.rip.t+=dt*2.6;if(G.rip.t>=1)G.rip=null;}
   G.chefF=((G.t*2.6)|0)%2;
-  if(G.rep<=0){closed=true;setState('result');SE.over();playBGM('result');saveBest();}
-  else if(G.left<=0){closed=false;setState('result');SE.over();playBGM('result');saveBest();}
+  if(G.rep<=0)enterResult(true);
+  else if(G.left<=0)enterResult(false);
 }
 function saveBest(){if(G.money>best){best=G.money;try{localStorage.setItem('udon4_best',best);}catch(e){}}}
 /* ============================ 操作 ============================ */
@@ -555,27 +566,41 @@ function drawVolume(t){
   txt('もどる',180,420,12,'#f6ecd8','center');
 }
 function drawResult(t){
-  x.drawImage(BG,0,0,W,H);rct(0,0,W,H,'rgba(11,9,6,0.68)');
-  txt(closed?'閉  店  …':'営業終了！',W/2,52,24,closed?'#e0604a':'#e8b44a','center');
-  const rows=[['売上','¥'+G.money.toLocaleString()],['提供',G.served+'人'],
-    ['帰ってしまった',G.gone+'人'],['廃棄',G.waste+'品'],
-    ['最大連続',G.maxCombo+'人'],['最終評判',Math.round(G.rep)+' / 100']];
-  rows.forEach((r,i)=>{txt(r[0],46,104+i*21,10,'#8b90a8');txt(String(r[1]),314,104+i*21,10,'#f2e3c2','right');});
-  const rank=rankOf();
+  x.drawImage(BG,0,0,W,H);rct(0,0,W,H,'rgba(11,9,6,0.74)');
+  if(resultFlash>0)rct(0,0,W,H,'rgba(240,200,106,'+(resultFlash*0.35)+')');
+  confetti.forEach(p=>{x.save();x.translate(p.x,p.y);x.rotate(p.r);x.fillStyle=p.c;x.fillRect(-3,-4,6,8);x.restore();});
+  const rank=rankOf(), hv=hensa(), tp=topPct();
+  const rc=rank==='S'?'#e8b44a':rank==='A'?'#7fae5a':rank==='B'?'#c8b890':rank==='D'?'#8b90a8':'#c8b890';
+  txt(closed?'閉  店':'営業終了！',W/2,26,14,closed?'#e0604a':'#c8b890','center');
+  /* ヒーロー: 本日の売上 */
+  txt('本日の売上',W/2,50,10,'#a89878','center');
+  txt('¥'+G.money.toLocaleString(),W/2,63,38,'#e8b44a','center');
+  if(G.money>=best&&G.money>0)txt('★ 自己ベスト更新！ ★',W/2,106,10,'#f0c86a','center');
+  /* ヒーロー: 実力偏差値 */
+  txt('実力偏差値（推定）',W/2,124,10,'#a89878','center');
+  txt(''+hv,W/2,136,32,hv>=70?'#f0c86a':'#f2e3c2','center');
+  txt('推定 全国上位 '+tp+'%',W/2,176,11,hv>=65?'#e8b44a':'#8b90a8','center');
+  /* ランクチップ（副次） */
+  rct(W/2-34,196,68,20,'#241a10');rct(W/2-34,196,68,2,rc);
+  txt('ランク '+rank,W/2,201,11,rc,'center');
+  /* レアバナー */
+  if(hv>=70){const bl=((t*3)|0)%2;
+    txt('★ 全国トップクラスの腕前！ ★',W/2,224,12,bl?'#f0c86a':'#e8b44a','center');}
+  else if(rank==='A'){txt('あと少しでS…売上13,000＋離脱0＋廃棄1以下',W/2,225,8,'#8b90a8','center');}
+  /* 内訳（コンパクト） */
+  txt('提供 '+G.served+'人   帰宅 '+G.gone+'人   廃棄 '+G.waste+'品',W/2,246,9,'#c8b890','center');
+  txt('最大連続 ×'+G.maxCombo+'   評判 '+Math.round(G.rep)+'/100',W/2,262,9,'#c8b890','center');
   let msg='まずは一杯ずつ、確実に。';
   if(rank==='S')msg='完璧な仕事…伝説の釜番だ！！';
   else if(rank==='A')msg='昼のピークも任せられる！';
   else if(rank==='B')msg='いい手際。段取りが光る。';
   else if(rank==='D')msg='また明日、のれんを出そう。';
-  txt('ランク',W/2,240,10,'#8b90a8','center');
-  txt(rank,W/2,252,34,rank==='S'?'#e8b44a':rank==='A'?'#7fae5a':'#f2e3c2','center');
-  if(rank==='A')txt('S条件: 売上13,000＋離脱0人＋廃棄1品以下',W/2,298,9,'#8b90a8','center');
-  txt(msg,W/2,316,10,'#c8b890','center');
-  if(G.money>=best&&G.money>0)txt('★自己ベスト更新！',W/2,338,10,'#e8b44a','center');
+  txt(msg,W/2,286,10,'#e0c98a','center');
+  /* シェア */
   rct(SHAREBTN.x,SHAREBTN.y,SHAREBTN.w,SHAREBTN.h,'#2e5a8c');rct(SHAREBTN.x,SHAREBTN.y,SHAREBTN.w,2,'#4a7ab0');
-  txt('📷 スコアをシェア',SHAREBTN.x+SHAREBTN.w/2,SHAREBTN.y+9,12,'#f6ecd8','center');
+  txt('📱 スコアをシェア',SHAREBTN.x+SHAREBTN.w/2,SHAREBTN.y+9,13,'#f6ecd8','center');
   if(shareMsgT>0)txt('画像を保存しました！',W/2,404,9,'#7fae5a','center');
-  if(stateAge()>1&&((t*2)|0)%2)txt('▶ 画面タップでもういちど',W/2,428,10,'#e8b44a','center');
+  if(stateAge()>1&&((t*2)|0)%2)txt('▶ 画面タップでもういちど',W/2,430,10,'#e8b44a','center');
 }
 /* ============================ ループ ============================ */
 let last=performance.now(),elT=0;
@@ -583,7 +608,13 @@ function loop(now){const dt=Math.min(0.06,(now-last)/1000);last=now;elT+=dt;
   update(dt);x.clearRect(0,0,W,H);
   if(state==='title')drawTitle(elT);
   else if(state==='volume')drawVolume(elT);
-  else if(state==='result')drawResult(elT);
+  else if(state==='result'){
+    if(resultFlash>0)resultFlash=Math.max(0,resultFlash-dt*1.4);
+    confetti.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=55*dt;p.r+=p.rv*dt;});
+    confetti=confetti.filter(p=>p.y<H+12);
+    drawResult(elT);
+    if(shareCapPending&&stateAge()>0.2){shareCapPending=false;captureShare();}
+  }
   else drawPlay(elT);}
 (function frame(){loop(performance.now());requestAnimationFrame(frame);})();
 setInterval(()=>{if(performance.now()-last>120)loop(performance.now());},50);
