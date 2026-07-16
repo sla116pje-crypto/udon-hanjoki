@@ -2,6 +2,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>うどん繁盛記 — セルフうどん・タイムマネジメント</title>
 <style>
+  @font-face{font-family:'PixelMplus12';src:url('assets/font/PixelMplus12-Regular.ttf') format('truetype');font-weight:normal;}
+  @font-face{font-family:'PixelMplus12';src:url('assets/font/PixelMplus12-Bold.ttf') format('truetype');font-weight:bold;}
   :root{ --bg:#14161f; --frame:#232738; --frame2:#2d3248; --gold:#e8b44a; --cream:#f2e3c2; --dim:#8b90a8; }
   body{background:var(--bg); color:var(--cream); margin:0;
     font-family:"Hiragino Kaku Gothic ProN","BIZ UDGothic",Meiryo,sans-serif;
@@ -55,7 +57,8 @@ const DKEYS=Object.keys(DISHES);
 /* ============================ 基盤 ============================ */
 const W=360,H=620,cv=document.getElementById('game'),x=cv.getContext('2d');
 x.imageSmoothingEnabled=false;
-const FONT='"Hiragino Kaku Gothic ProN","BIZ UDGothic",Meiryo,sans-serif';
+const FONT='"PixelMplus12","Hiragino Kaku Gothic ProN","BIZ UDGothic",Meiryo,sans-serif';
+try{document.fonts.load('bold 12px PixelMplus12');document.fonts.load('12px PixelMplus12');}catch(e){}
 const f=(s,b)=>(b?'bold ':'')+s+'px '+FONT;
 const px=(a,b,c)=>{x.fillStyle=c;x.fillRect(a|0,b|0,1,1);};
 const rct=(a,b,w,h,c)=>{x.fillStyle=c;x.fillRect(a|0,b|0,w|0,h|0);};
@@ -80,24 +83,34 @@ const SE={boil(){sfx(300,.06,'square',.04,120)},ding(){sfx(880,.11,'sine',.06);s
   tick(){sfx(1400,.03,'square',.045)},
   jingle(){sfx(659,.07,'square',.05);setTimeout(()=>sfx(880,.07,'square',.05),80);setTimeout(()=>sfx(1174,.12,'square',.05),160)},
   over(){sfx(523,.15,'square',.05);setTimeout(()=>sfx(392,.15,'square',.05),150);setTimeout(()=>sfx(262,.3,'square',.05),300)}};
-/* --- 客の音声（Web Speech API・上位音声を自動選択） --- */
-const HAPPY=['うっま！','あ〜、うまかった！','ごちそうさん！','これこれ、これやねん！','大将、さすがやわ！','うまいなあ！','また来るで！'];
-const ANGRY=['いつまで待たせんねん！','もうええわ、帰る！','おっそいわ！','二度と来えへんからな！','はよしてえや！'];
-let JPVOICE=null;
-function pickVoice(){try{
-  const vs=speechSynthesis.getVoices().filter(v=>/^ja/i.test(v.lang));
-  JPVOICE=vs.find(v=>/Enhanced|Premium|プレミアム|拡張/i.test(v.name))
-       ||vs.find(v=>/Google/i.test(v.name))
-       ||vs.find(v=>/Kyoko|Otoya|O-?ren/i.test(v.name))||vs[0]||null;}catch(e){}}
-if('speechSynthesis' in window){pickVoice();speechSynthesis.onvoiceschanged=pickVoice;}
-function speak(text,pitch){try{
-  if(!('speechSynthesis' in window))return;
-  if(speechSynthesis.speaking)return;              // 渋滞したら諦める（短い一言だけ）
-  const u=new SpeechSynthesisUtterance(text);
-  u.lang='ja-JP';if(JPVOICE)u.voice=JPVOICE;
-  u.rate=1.05+Math.random()*0.3;u.pitch=pitch;u.volume=0.9;
-  speechSynthesis.speak(u);}catch(e){}}
-/* --- タイムアタックBGM（4つ打ち＋スネア＋跳ねベース＋アンセム風リード） --- */
+/* --- 客の音声（効果音ラボの収録音声・商用無料/クレジット不要） --- */
+const VOICE={
+  welcome:['irasshaimase1','rasshai1'],
+  happy:['itadakimasu1','gochisousama1','gochisousamadeshita1','ookini1'],
+  angry:['moueewa1','mouokotta1','nandeyanen1'],
+};
+const VA={};
+for(const k in VOICE)VOICE[k].forEach(n=>{const a=new Audio('assets/voice/'+n+'.mp3');a.preload='auto';VA[n]=a;});
+let lastVoice=0;
+function voice(kind){
+  const now=performance.now(); if(now-lastVoice<700)return; lastVoice=now;   // 渋滞防止
+  const arr=VOICE[kind], a=VA[arr[(Math.random()*arr.length)|0]];
+  try{a.currentTime=0;a.volume=0.9;const p=a.play();if(p)p.catch(()=>{});}catch(e){}}
+/* --- BGM: 本物の楽曲（Juhani Junkala・CC0）。読み込み失敗時のみ合成音にフォールバック --- */
+const BGMA={title:new Audio('assets/bgm/title.m4a'),play:new Audio('assets/bgm/play.m4a'),result:new Audio('assets/bgm/result.m4a')};
+BGMA.title.loop=true;BGMA.play.loop=true;BGMA.result.loop=false;
+Object.values(BGMA).forEach(a=>{a.preload='auto';a.volume=0.55;});
+let curBGM=null;
+function playBGM(name){
+  stopBGM();
+  const a=BGMA[name];if(!a)return;
+  curBGM=a;a.playbackRate=1;try{a.preservesPitch=false;}catch(e){}
+  a.currentTime=0;
+  const p=a.play();
+  if(p)p.catch(()=>{if(name==='play')bgmStart();});   // 音源が使えない環境では合成BGM
+}
+function stopBGM(){if(curBGM){curBGM.pause();curBGM=null;}bgmStop();}
+/* --- 合成BGM（フォールバック用に温存） --- */
 const BGM={on:false,next:0,step:0,timer:null};
 let NOISE=null;
 function noiseBuf(){if(NOISE)return NOISE;
@@ -297,11 +310,11 @@ function update(dt){
   if(G.spawnT<=0){const free=G.custs.map((c,i)=>c?null:i).filter(v=>v!==null);
     if(free.length){const slot=free[(Math.random()*free.length)|0];const d=genDish(G.t),pt=CFG.patience(G.t);
       G.custs[slot]={dish:d,p:pt,maxP:pt,v:CVARS[(Math.random()*CVARS.length)|0],ph:Math.random()*6,id:++G.seq};
-      SE.arrive();}
+      SE.arrive();voice('welcome');}
     G.spawnT=CFG.spawn(G.t)*(0.8+Math.random()*0.4);}
   G.custs.forEach((c,i)=>{if(!c)return;c.p-=dt;
     if(c.p<=0){G.custs[i]=null;G.gone++;repAdd(-12);comboReset();SE.bye();
-      speak(ANGRY[(Math.random()*ANGRY.length)|0],0.7+Math.random()*0.5);
+      voice('angry');
       pop(CUSTX[i]+42,CUSTY-4,'帰っちゃった…','#e0604a');}});
   /* ラスト10秒の時計 */
   if(G.left<=10&&G.left>0&&((G.left|0)!==((G.left+dt)|0)))SE.tick();
@@ -319,8 +332,10 @@ function update(dt){
   G.steam.forEach(s=>{s.t+=dt;s.y-=dt*13;});G.steam=G.steam.filter(s=>s.t<1.6);
   if(G.rip){G.rip.t+=dt*2.6;if(G.rip.t>=1)G.rip=null;}
   G.chefF=((G.t*2.6)|0)%2;
-  if(G.rep<=0){closed=true;setState('result');SE.over();bgmStop();saveBest();}
-  else if(G.left<=0){closed=false;setState('result');SE.over();bgmStop();saveBest();}
+  /* ラスト25秒はBGMを加速（本物音源はplaybackRate、合成はbgmTick内で対応済み） */
+  if(curBGM===BGMA.play)curBGM.playbackRate=(G.left<=25?1.15:1);
+  if(G.rep<=0){closed=true;setState('result');SE.over();playBGM('result');saveBest();}
+  else if(G.left<=0){closed=false;setState('result');SE.over();playBGM('result');saveBest();}
 }
 function saveBest(){if(G.money>best){best=G.money;try{localStorage.setItem('udon4_best',best);}catch(e){}}}
 /* ============================ 操作 ============================ */
@@ -362,13 +377,13 @@ function tapCust(i){const c=G.custs[i];if(!c)return;const D=DISHES[c.dish];
   const bonus=G.combo>=3?Math.round(D.price*0.1*Math.min(G.combo-2,8)):0;G.money+=bonus;
   G.custs[i]=null;SE.coin();
   if(G.combo===5||G.combo===10)SE.jingle();
-  speak(HAPPY[(Math.random()*HAPPY.length)|0],0.8+Math.random()*0.6);
+  voice('happy');
   pop(CUSTX[i]+42,CUSTY-4,'+¥'+(D.price+bonus).toLocaleString(),'#e8b44a',true);
   if(G.combo>=3)pop(CUSTX[i]+42,CUSTY+12,'連続×'+G.combo+(bonus?' +'+bonus:''),'#7fae5a');}
 cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();
   const a=(e.clientX-r.left)*W/r.width,b=(e.clientY-r.top)*H/r.height;
-  if(state==='title'){if(stateAge()>0.4){reset();setState('play');SE.take();bgmStart();}return;}
-  if(state==='result'){if(stateAge()>1){setState('title');SE.take();}return;}
+  if(state==='title'){if(stateAge()>0.4){reset();setState('play');SE.take();playBGM('play');}return;}
+  if(state==='result'){if(stateAge()>1){setState('title');SE.take();playBGM('title');}return;}
   G.rip={x:a,y:b,t:0};
   KAMA.forEach((kk,i)=>{if(a>=kk.x&&a<kk.x+kk.w&&b>=kk.y-14&&b<kk.y+kk.h+6)tapKama(i);});
   if(a>=EGG.x&&a<EGG.x+EGG.w&&b>=EGG.y-14&&b<EGG.y+EGG.h+6)tapEgg();
@@ -465,6 +480,7 @@ function drawTitle(t){
     txt(DISHES[k].name,bx+14,by+20,8,'#f2e3c2','center');txt('¥'+DISHES[k].price,bx+14,by+31,7,'#c8a060','center');});
   if(((t*2)|0)%2)txt('▶ タップして開店',W/2,436,14,'#e8b44a','center');
   txt('自己ベスト ¥'+best.toLocaleString(),W/2,470,10,'#c8b890','center');
+  txt('BGM: Juhani Junkala (CC0)／声: 効果音ラボ／Font: PixelMplus',W/2,592,7,'#7a705c','center');
 }
 function drawResult(t){
   x.drawImage(BG,0,0);rct(0,0,W,H,'rgba(11,9,6,0.68)');
