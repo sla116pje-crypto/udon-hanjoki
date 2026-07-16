@@ -22,12 +22,11 @@
 </style>
 <div class="wrap">
   <header><h1>うどん繁盛記</h1><small>3分スコアアタック</small></header>
-  <div class="cab"><canvas id="game" width="360" height="620"></canvas></div>
+  <div class="cab"><canvas id="game" width="360" height="500"></canvas></div>
   <div class="legend">
-    調理器具をタップして具を用意 → カウンターのお客さんをタップで提供。
-    <b>かけ</b>=茹でうどんだけ／<b>きつね</b>=＋油揚げ（煮込み鍋）／<b>月見</b>=＋卵（卵台）／
-    <b>えび天・かき揚げ・かしわ天</b>=＋天ぷら（専用フライヤー）／<b>おにぎり</b>=握るだけ（うどん不要）。
-    <b class="k">メニューごとに必要な一手が違う</b>。
+    調理器具をタップして具を用意 → カウンターのお客さんをタップで提供。<b>器具のすぐ隣がそのストック置き場</b>。
+    <b>かけ</b>=茹でうどんだけ／<b>きつね</b>=＋油揚げ／<b>月見</b>=＋卵／
+    <b>えび天・かき揚げ・かしわ天</b>=＋天ぷら（専用フライヤー・<b>2個まで同時に揚げられる</b>）／<b>おにぎり</b>=握るだけ。
   </div>
 </div>
 <script>
@@ -44,18 +43,18 @@ const DISHES = {
 };
 const FRIED={ ebiten:{name:'えび天',fry:5,fresh:15}, kakiage:{name:'かき揚げ',fry:6,fresh:15},
   kashiwa:{name:'かしわ天',fry:5.5,fresh:15} };
-/* 同時注文の上限＝設備容量から逆算（フライヤー各1台→2件まで等） */
+/* 同時注文の上限＝設備容量から逆算 */
 const ORDER_CAP={kake:9,kitsune:3,tsukimi:3,ebi:2,kakiage:2,kashiwa:2,onigiri:9};
 const CFG={
   shift:120, boil:6, golden:5, over:1.2, nobi:20,
   ageSim:3.0, ageCap:5, eggCd:0.4, eggCap:5,
   rep0:55,
-  patience:e=>Math.max(15,26-e*0.09),      // 難易度UP: 忍耐短め
-  spawn:e=>Math.max(2.4,6.5-e*0.045),      // 難易度UP: 来店間隔短縮
+  patience:e=>Math.max(15,26-e*0.09),
+  spawn:e=>Math.max(2.4,6.5-e*0.045),
 };
 const DKEYS=Object.keys(DISHES);
 /* ============================ 基盤 ============================ */
-const W=360,H=620,cv=document.getElementById('game'),x=cv.getContext('2d');
+const W=360,H=500,cv=document.getElementById('game'),x=cv.getContext('2d');
 x.imageSmoothingEnabled=false;
 const FONT='"PixelMplus12","Hiragino Kaku Gothic ProN","BIZ UDGothic",Meiryo,sans-serif';
 try{document.fonts.load('bold 12px PixelMplus12');document.fonts.load('12px PixelMplus12');}catch(e){}
@@ -83,7 +82,7 @@ const SE={boil(){sfx(300,.06,'square',.04,120)},ding(){sfx(880,.11,'sine',.06);s
   tick(){sfx(1400,.03,'square',.045)},
   jingle(){sfx(659,.07,'square',.05);setTimeout(()=>sfx(880,.07,'square',.05),80);setTimeout(()=>sfx(1174,.12,'square',.05),160)},
   over(){sfx(523,.15,'square',.05);setTimeout(()=>sfx(392,.15,'square',.05),150);setTimeout(()=>sfx(262,.3,'square',.05),300)}};
-/* --- 客の音声（効果音ラボの収録音声・商用無料/クレジット不要） --- */
+/* --- 客の音声（効果音ラボの収録音声） --- */
 const VOICE={
   welcome:['irasshaimase1','rasshai1'],
   happy:['itadakimasu1','gochisousama1','gochisousamadeshita1','ookini1'],
@@ -93,24 +92,25 @@ const VA={};
 for(const k in VOICE)VOICE[k].forEach(n=>{const a=new Audio('assets/voice/'+n+'.mp3');a.preload='auto';VA[n]=a;});
 let lastVoice=0;
 function voice(kind){
-  const now=performance.now(); if(now-lastVoice<700)return; lastVoice=now;   // 渋滞防止
+  const now=performance.now(); if(now-lastVoice<700)return; lastVoice=now;
   const arr=VOICE[kind], a=VA[arr[(Math.random()*arr.length)|0]];
   try{a.currentTime=0;a.volume=0.9;const p=a.play();if(p)p.catch(()=>{});}catch(e){}}
-/* --- BGM: 本物の楽曲（Juhani Junkala・CC0）。読み込み失敗時のみ合成音にフォールバック --- */
+/* --- BGM: 候補選定中につき合成チップチューン（v4版）で暫定運用 --- */
+/* 実音源(assets/bgm/*)は保持・BGM_MODE切替で復帰可能 */
+const BGM_MODE='synth';
 const BGMA={title:new Audio('assets/bgm/title.m4a'),play:new Audio('assets/bgm/play.m4a'),result:new Audio('assets/bgm/result.m4a')};
 BGMA.title.loop=true;BGMA.play.loop=true;BGMA.result.loop=false;
-Object.values(BGMA).forEach(a=>{a.preload='auto';a.volume=0.55;});
+Object.values(BGMA).forEach(a=>{a.preload='none';a.volume=0.55;});
 let curBGM=null;
 function playBGM(name){
   stopBGM();
+  if(BGM_MODE==='synth'){ if(name==='play')bgmStart(); return; }
   const a=BGMA[name];if(!a)return;
   curBGM=a;a.playbackRate=1;try{a.preservesPitch=false;}catch(e){}
-  a.currentTime=0;
-  const p=a.play();
-  if(p)p.catch(()=>{if(name==='play')bgmStart();});   // 音源が使えない環境では合成BGM
+  a.currentTime=0;const p=a.play();if(p)p.catch(()=>{if(name==='play')bgmStart();});
 }
 function stopBGM(){if(curBGM){curBGM.pause();curBGM=null;}bgmStop();}
-/* --- 合成BGM（フォールバック用に温存） --- */
+/* --- 合成BGM（4つ打ち＋スネア＋跳ねベース） --- */
 const BGM={on:false,next:0,step:0,timer:null};
 let NOISE=null;
 function noiseBuf(){if(NOISE)return NOISE;
@@ -126,12 +126,11 @@ function drum(t0,kind){try{
     g.gain.setValueAtTime(0.10,t0);g.gain.exponentialRampToValueAtTime(0.001,t0+0.12);
     o.connect(g).connect(AC.destination);o.start(t0);o.stop(t0+0.13);}
   else{const s=AC.createBufferSource();s.buffer=noiseBuf();
-    const f=AC.createBiquadFilter();f.type='highpass';f.frequency.value=kind==='hat'?7500:1800;
+    const fl=AC.createBiquadFilter();fl.type='highpass';fl.frequency.value=kind==='hat'?7500:1800;
     const g=AC.createGain();
     g.gain.setValueAtTime(kind==='hat'?0.018:0.05,t0);
     g.gain.exponentialRampToValueAtTime(0.001,t0+(kind==='hat'?0.03:0.09));
-    s.connect(f);f.connect(g);g.connect(AC.destination);s.start(t0);s.stop(t0+0.1);}}catch(e){}}
-/* 4小節ループ（8分×32歩）: Am → F → C → G */
+    s.connect(fl);fl.connect(g);g.connect(AC.destination);s.start(t0);s.stop(t0+0.1);}}catch(e){}}
 const ROOTS=[110,87.3,130.8,98];
 const LEAD32=[659,523,440,523, 659,880,784,659,  698,880,784,698, 659,587,523,587,
               659,784,1046,988, 880,784,659,523,  587,659,784,880, 988,784,659,587];
@@ -141,17 +140,16 @@ function bgmTick(){
   const spb=60/(rush?180:158)/2, mul=rush?1.0595:1;
   while(BGM.next<AC.currentTime+0.18){
     const s=BGM.step%32, bar=(s/8)|0, t0=BGM.next;
-    if(s%2===0)drum(t0,'kick');                              // 4つ打ち
-    if(s%8===2||s%8===6)drum(t0,'snare');                    // 2・4拍
-    drum(t0,'hat');                                          // 刻み
-    const root=ROOTS[bar]*(s%2?2:1);                         // オクターブ跳ねベース
-    bgmTone(root*mul,t0,spb*0.85,'square',0.03);
-    bgmTone(LEAD32[s]*mul,t0,spb*0.9,'square',0.02);         // リード（常時）
-    if(((BGM.step/32)|0)%2===1)bgmTone(LEAD32[s]*mul*1.5,t0,spb*0.8,'triangle',0.014); // 5度ハモリ
+    if(s%2===0)drum(t0,'kick');
+    if(s%8===2||s%8===6)drum(t0,'snare');
+    drum(t0,'hat');
+    bgmTone(ROOTS[bar]*(s%2?2:1)*mul,t0,spb*0.85,'square',0.03);
+    bgmTone(LEAD32[s]*mul,t0,spb*0.9,'square',0.02);
+    if(((BGM.step/32)|0)%2===1)bgmTone(LEAD32[s]*mul*1.5,t0,spb*0.8,'triangle',0.014);
     BGM.next+=spb;BGM.step++;
   }}
 function bgmStart(){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();
-  if(AC.state==='suspended')AC.resume();                     // iOSの音声アンロック
+  if(AC.state==='suspended')AC.resume();
   BGM.on=true;BGM.next=AC.currentTime+0.05;BGM.step=0;
   if(!BGM.timer)BGM.timer=setInterval(bgmTick,60);}catch(e){}}
 function bgmStop(){BGM.on=false;}
@@ -181,12 +179,13 @@ const BOWL=[
 '......nnnnnnnnnn......','....BBBBBBBBBBBBBB....','..HBBBBBBBBBBBBBBBB...','..BBBBBBBBBBBBBBBBBB..',
 '.rBBBBBBBBBBBBBBBBBBr.','.rrrrrrrrrrrrrrrrrrrr.','.RrrrrrrrrrrrrrrrrrrR.','..RRrrrrrrrrrrrrrrRR..',
 '...RRRRrrrrrrrrRRRR...','.....RRRRRRRRRRRR.....','.......RRRRRRRR.......','.........RRRR.........'];
-const SP_EBI=['........oo.','......ooOtt','....ooooot.','..ooOoooo..','.oooooo....','ooooo......','.oo........'];
-const SP_EBI_PAL={o:'#dca23a',O:'#f0c86a',t:'#c94f38'};
-const SP_KAKI=['..oOoo..','.oooooo.','ooodoooo','oooooddo','.oooooo.','..oooo..'];
-const SP_KAKI_PAL={o:'#d89430',O:'#f0c86a',d:'#a86a1e'};
-const SP_KASHIWA=['..oOooo...','.ooooooo..','ooodooooo.','.oooddooo.','..ooooo...'];
-const SP_KASHIWA_PAL={o:'#c9a050',O:'#ecd08a',d:'#96702a'};
+/* 天ぷら3種: シルエットで判別（えび=細長+赤い尾／かき揚げ=丸く穴あき／かしわ=茶色のゴロッと塊） */
+const SP_EBI=['...ooooooooo..','..oOOooooooo..','.oooooooooooTT','..ooooooooooT.','...ooooooo....'];
+const SP_EBI_PAL={o:'#e8b452',O:'#f6d98a',T:'#d84a30'};
+const SP_KAKI=['..oooooo..','.oooooooo.','oodoooodoo','oooodooooo','.oodooooo.','..oooooo..'];
+const SP_KAKI_PAL={o:'#d89430',d:'#7a4e16'};
+const SP_KASHIWA=['...bbbb.....','..bbbbbb.b..','.bbbBbbbbbb.','bbbbbbbBbb..','.bbbbbbbbb..','...bbbb.....'];
+const SP_KASHIWA_PAL={b:'#b0763a',B:'#e0b070'};
 const SP_ONIGIRI=['.....ww.....','....wwww....','...wwwwww...','..wwwwwwww..','.wwwwwwwwww.','.wwwwwwwwww.','..kkkkkkkk..','..kkkkkkkk..'];
 const SP_ONIGIRI_PAL={w:'#f6f0e8',k:'#1c241c'};
 function drawOnigiri(a,b,sc=1){spr(SP_ONIGIRI,a,b,SP_ONIGIRI_PAL,sc);}
@@ -197,8 +196,9 @@ function drawBowl(a,b,dish,sc=1){
   const cx=a+8*sc,cy=b+2*sc;
   if(D.need==='age'){rct(cx-2*sc,cy,10*sc,3*sc,'#7a4e26');rct(cx-2*sc,cy,10*sc,1*sc,'#9a6836');rct(cx,cy+sc,6*sc,sc,'#5e3c1c');}
   else if(D.need==='tamago'){rct(cx+sc,cy-sc,6*sc,4*sc,'#f6f0e0');rct(cx+2*sc,cy,4*sc,3*sc,'#f4c024');rct(cx+2*sc,cy,2*sc,sc,'#f8dc60');}
-  else if(D.need==='ebiten')spr(SP_EBI,a+6*sc,b,SP_EBI_PAL,sc);
+  else if(D.need==='ebiten')spr(SP_EBI,a+5*sc,b,SP_EBI_PAL,sc*0.9);
   else if(D.need==='kakiage')spr(SP_KAKI,a+7*sc,b+sc,SP_KAKI_PAL,sc);
+  else if(D.need==='kashiwa')spr(SP_KASHIWA,a+6*sc,b+sc,SP_KASHIWA_PAL,sc);
   else {x.fillStyle='#6ea84e';for(let n=0;n<6;n++)x.fillRect(a+(6+n*2)*sc,b+(2+((n*5)%3))*sc,sc,sc);}
 }
 function drawTen(a,b,k,sc=1){if(k==='ebiten')spr(SP_EBI,a,b,SP_EBI_PAL,sc);
@@ -207,43 +207,41 @@ function drawTen(a,b,k,sc=1){if(k==='ebiten')spr(SP_EBI,a,b,SP_EBI_PAL,sc);
 function drawEgg(a,b,sc=1){rct(a,b+sc,6*sc,4*sc,'#f6f0e0');rct(a+sc,b,4*sc,1*sc,'#f6f0e0');
   rct(a+2*sc,b+2*sc,3*sc,2*sc,'#f4c024');px(a+2*sc,b+2*sc,'#f8dc60');}
 function drawAge(a,b,sc=1){rct(a,b,9*sc,5*sc,'#7a4e26');rct(a,b,9*sc,sc,'#9a6836');rct(a+2*sc,b+2*sc,5*sc,sc,'#5e3c1c');}
-/* ============================ レイアウト（スマホ縦持ち・客=上・厨房=下2段） ============================ */
+/* ============================ レイアウト（器具の隣＝そのストック） ============================ */
 const CUSTX=[4,94,184,274];
-const CARDY=94;      // 注文カード（幅84）
-const CUSTY=146;     // 客（腰から下はカウンターに隠れる＝着席）
-const COUNTER=184;   // カウンター上端（高さ16）
+const CARDY=94;
+const CUSTY=146;
+const COUNTER=184;
 const EQH=46;
-const EQY1=254;      // 器具1段目: 釜×3＋卵台
-const KAMA=[{x:8},{x:96},{x:184}].map(o=>({...o,y:EQY1,w:80,h:EQH}));
-const EGG ={x:272,y:EQY1,w:80,h:EQH};
-const EQY2=330;      // 器具2段目: 煮込み鍋＋フライヤー×3＋おにぎり台
-const AGE ={x:8,y:EQY2,w:64,h:EQH};
-const FRY =[{k:'ebiten',x:80},{k:'kakiage',x:148},{k:'kashiwa',x:216}].map(o=>({...o,y:EQY2,w:60,h:EQH}));
-const ONIG={x:284,y:EQY2,w:68,h:EQH};
-const STAFFY=206;    // 大将（カウンターと器具の間の通路）
-const UDONZ={x:8,y:416,w:344};
-const EGGZ ={x:8,y:474,w:100};
-const AGEZ ={x:122,y:474,w:106};
-const ONIGZ={x:242,y:474,w:110};
-const RACKZ={x:8,y:532,w:344};
+/* 1段目: 釜×3 ＋ すぐ右にうどんストック */
+const EQY1=254;
+const KAMA=[{x:8},{x:66},{x:124}].map(o=>({...o,y:EQY1,w:54,h:EQH}));
+const UDONZ={x:186,y:EQY1,w:166,h:EQH};
+/* 2段目: フライヤー3台・各台のすぐ右がそのストック */
+const EQY2=330;
+const FRYG=[{k:'ebiten',x:8},{k:'kakiage',x:124},{k:'kashiwa',x:240}]
+  .map(o=>({...o,y:EQY2,w:52,h:EQH,sx:o.x+56,sw:56}));
+/* 3段目: 卵台・煮込み鍋・おにぎり台（各台のすぐ右がストック） */
+const EQY3=406;
+const EGG ={x:8,  y:EQY3,w:48,h:EQH}; const EGGZ ={x:60, y:EQY3,w:44,h:EQH};
+const AGE ={x:122,y:EQY3,w:52,h:EQH}; const AGEZ ={x:178,y:EQY3,w:46,h:EQH};
+const ONIG={x:240,y:EQY3,w:52,h:EQH}; const ONIGZ={x:296,y:EQY3,w:56,h:EQH};
+const STAFFY=206;
 /* ============================ 背景（静的） ============================ */
 const BG=document.createElement('canvas');BG.width=W;BG.height=H;
 (function paintBG(){
   const g=BG.getContext('2d');g.imageSmoothingEnabled=false;
   const p=(a,b,c)=>{g.fillStyle=c;g.fillRect(a,b,1,1);};const r=(a,b,w,h,c)=>{g.fillStyle=c;g.fillRect(a,b,w,h);};
-  /* 壁 */
   r(0,0,W,COUNTER,'#9a7a4e');
   for(let i=0;i<W;i+=4)for(let j=0;j<COUNTER;j+=6)if(dith(i,j))p(i+((j/6)|0)%2,j,'#a98a5a');
-  /* のれん: 竿＋同色の布（隙間・裾の不揃い・影） */
-  r(0,7,W,31,'#241a10');                                   // 布の奥の影
+  /* のれん */
+  r(0,7,W,31,'#241a10');
   for(let s=0;s<4;s++){
-    const x0=2+s*90, len=27+((s*5)%3)*2;                   // 裾の長さが布ごとに少し違う
-    r(x0,6,86,len,'#b5402e');                              // 布
-    r(x0,6,86,4,'#8a2f22');                                // 竿下の影
-    r(x0,6+len-2,86,2,'#9c3626');                          // 裾
-    r(x0,6,2,len,'#9c3626'); r(x0+84,6,2,len,'#9c3626');   // 布の両端の影
+    const x0=2+s*90, len=27+((s*5)%3)*2;
+    r(x0,6,86,len,'#b5402e'); r(x0,6,86,4,'#8a2f22');
+    r(x0,6+len-2,86,2,'#9c3626'); r(x0,6,2,len,'#9c3626'); r(x0+84,6,2,len,'#9c3626');
   }
-  r(0,0,W,6,'#3a2818'); r(0,5,W,1,'#523a24');              // 竿
+  r(0,0,W,6,'#3a2818'); r(0,5,W,1,'#523a24');
   g.font='bold 15px '+FONT;g.textAlign='center';g.textBaseline='top';
   g.fillStyle='#5e1f16';g.fillText('うどん繁盛記',W/2+1,15);
   g.fillStyle='#f6ecd8';g.fillText('うどん繁盛記',W/2,14);
@@ -256,17 +254,15 @@ const BG=document.createElement('canvas');BG.width=W;BG.height=H;
   /* 客の床 */
   r(0,86,W,COUNTER-86,'#5a4632');
   for(let j=90;j<COUNTER;j+=5)for(let i=0;i<W;i+=2)if(dith(i,j))p(i,j,'#6a5440');
-  /* カウンター（客の脚を隠す帯・drawPlayでも客の上に再描画する） */
+  /* カウンター */
   r(0,COUNTER,W,16,'#8a5a2e'); r(0,COUNTER,W,2,'#a56e38'); r(0,COUNTER+14,W,2,'#4a3120');
   for(let i=0;i<W;i+=24)p(i+11,COUNTER+8,'#6e4a2b');
   /* 厨房の床 */
   r(0,COUNTER+16,W,H-(COUNTER+16),'#3f2f24');
   for(let j=COUNTER+20;j<H;j+=5)for(let i=0;i<W;i+=2)if(dith(i,j))p(i,j,'#4a3728');
-  /* 調理台の背板（2段） */
-  r(0,EQY1-8,W,4,'#6e4a2b'); r(0,EQY1-5,W,1,'#4a3120');
-  r(0,EQY2-8,W,4,'#6e4a2b'); r(0,EQY2-5,W,1,'#4a3120');
+  /* 調理台の背板（3段） */
+  [EQY1,EQY2,EQY3].forEach(y=>{r(0,y-8,W,4,'#6e4a2b'); r(0,y-5,W,1,'#4a3120');});
 })();
-/* カウンター帯（客の脚の上に重ねる用） */
 function counterBand(){
   rct(0,COUNTER,W,16,'#8a5a2e');rct(0,COUNTER,W,2,'#a56e38');rct(0,COUNTER+14,W,2,'#4a3120');
   for(let i=0;i<W;i+=24)px(i+11,COUNTER+8,'#6e4a2b');
@@ -279,7 +275,8 @@ function setState(s){state=s;stateAt=performance.now();}
 function reset(){
   G={t:0,left:CFG.shift,money:0,rep:CFG.rep0,served:0,waste:0,gone:0,combo:0,maxCombo:0,
      kama:[{st:'idle',t:0},{st:'idle',t:0},{st:'idle',t:0}],
-     fry:[null,null,null], udon:[], rack:[], age:0, tamago:0, onigiri:0, ageSim:null, eggCd:0, onigCd:0,
+     fry:[[],[],[]],                                  // 各フライヤー最大2個同時
+     udon:[], rack:[], age:0, tamago:0, onigiri:0, ageSim:null, eggCd:0, onigCd:0,
      custs:[null,null,null,null], spawnT:1.0, seq:0, pops:[], steam:[], msg:'', msgT:0,
      chefX:110, chefTargetX:110, chefF:0, rip:null};
   closed=false;
@@ -290,7 +287,6 @@ function repAdd(v){G.rep=Math.max(0,Math.min(100,G.rep+v));}
 function comboReset(){if(G.combo>2)pop(W/2,60,'連続とぎれた','#8b90a8');G.combo=0;}
 function wasteAt(a,b,label){G.waste++;repAdd(-3);comboReset();SE.waste();pop(a,b,label+' 廃棄','#8b90a8');}
 function moveChef(tx){G.chefTargetX=Math.max(24,Math.min(W-40,tx));}
-/* 注文生成（設備容量を超える同種注文は出さない） */
 function genDish(e){
   const pool= e<10?['kake','kitsune','tsukimi','onigiri']
             : e<30?['kake','kitsune','tsukimi','onigiri','ebi','kashiwa']
@@ -316,24 +312,28 @@ function update(dt){
     if(c.p<=0){G.custs[i]=null;G.gone++;repAdd(-12);comboReset();SE.bye();
       voice('angry');
       pop(CUSTX[i]+42,CUSTY-4,'帰っちゃった…','#e0604a');}});
-  /* ラスト10秒の時計 */
   if(G.left<=10&&G.left>0&&((G.left|0)!==((G.left+dt)|0)))SE.tick();
   G.kama.forEach((k,i)=>{if(k.st!=='boil')return;k.t+=dt;
     if(k.t>=CFG.boil&&k.t<CFG.boil+0.05)SE.ding();
     if(k.t>CFG.boil+CFG.golden){k.st='idle';k.t=0;wasteAt(KAMA[i].x+27,KAMA[i].y,'茹ですぎ');}});
   if(G.ageSim!=null){G.ageSim+=dt;if(G.ageSim>=CFG.ageSim){G.age=Math.min(CFG.ageCap,G.age+1);G.ageSim=null;SE.take();pop(AGE.x+25,AGE.y,'油揚げ完成','#e8b44a');}}
-  G.fry.forEach((fj,i)=>{if(!fj)return;fj.t+=dt;
-    if(fj.t>=FRIED[fj.k].fry){G.rack.push({k:fj.k,age:0});SE.take();pop(FRY[i].x+26,FRY[i].y-2,FRIED[fj.k].name+' あがり','#e8b44a');G.fry[i]=null;}});
-  for(let i=G.rack.length-1;i>=0;i--){G.rack[i].age+=dt;if(G.rack[i].age>FRIED[G.rack[i].k].fresh){const k=G.rack[i].k;G.rack.splice(i,1);wasteAt(RACKZ.x+50,RACKZ.y,FRIED[k].name);}}
+  /* フライヤー（各台2個まで同時） */
+  G.fry.forEach((arr,i)=>{for(let j=arr.length-1;j>=0;j--){const fj=arr[j];fj.t+=dt;
+    if(fj.t>=FRIED[fj.k].fry){arr.splice(j,1);G.rack.push({k:fj.k,age:0});SE.take();
+      pop(FRYG[i].x+26,FRYG[i].y-2,FRIED[fj.k].name+' あがり','#e8b44a');}}});
+  for(let i=G.rack.length-1;i>=0;i--){G.rack[i].age+=dt;
+    if(G.rack[i].age>FRIED[G.rack[i].k].fresh){const k=G.rack[i].k;G.rack.splice(i,1);
+      const gEnt=FRYG.find(gg=>gg.k===k);
+      wasteAt(gEnt?gEnt.sx+24:W/2,EQY2,FRIED[k].name);}}
   for(let i=G.udon.length-1;i>=0;i--){G.udon[i].age+=dt;if(G.udon[i].age>CFG.nobi){G.udon.splice(i,1);wasteAt(UDONZ.x+50,UDONZ.y,'のびたうどん');}}
+  /* ラスト25秒はBGM加速（実音源時） */
+  if(curBGM===BGMA.play)curBGM.playbackRate=(G.left<=25?1.15:1);
   G.pops.forEach(pp=>pp.t+=dt);G.pops=G.pops.filter(pp=>pp.t<1.3);
-  G.kama.forEach((k,i)=>{if(k.st==='boil'&&Math.random()<dt*9)G.steam.push({x:KAMA[i].x+12+Math.random()*30,y:KAMA[i].y+6,t:0});});
+  G.kama.forEach((k,i)=>{if(k.st==='boil'&&Math.random()<dt*9)G.steam.push({x:KAMA[i].x+10+Math.random()*30,y:KAMA[i].y+6,t:0});});
   if(G.ageSim!=null&&Math.random()<dt*6)G.steam.push({x:AGE.x+16+Math.random()*18,y:AGE.y+6,t:0});
   G.steam.forEach(s=>{s.t+=dt;s.y-=dt*13;});G.steam=G.steam.filter(s=>s.t<1.6);
   if(G.rip){G.rip.t+=dt*2.6;if(G.rip.t>=1)G.rip=null;}
   G.chefF=((G.t*2.6)|0)%2;
-  /* ラスト25秒はBGMを加速（本物音源はplaybackRate、合成はbgmTick内で対応済み） */
-  if(curBGM===BGMA.play)curBGM.playbackRate=(G.left<=25?1.15:1);
   if(G.rep<=0){closed=true;setState('result');SE.over();playBGM('result');saveBest();}
   else if(G.left<=0){closed=false;setState('result');SE.over();playBGM('result');saveBest();}
 }
@@ -353,10 +353,10 @@ function tapAge(){moveChef(AGE.x+AGE.w/2);
 function tapOnig(){moveChef(ONIG.x+ONIG.w/2);if(G.onigCd>0)return;
   if(G.onigiri>=5){say('おにぎりがいっぱい');SE.buzz();return;}
   G.onigiri++;G.onigCd=0.6;SE.take();pop(ONIG.x+22,ONIG.y-2,'にぎった！','#f2e3c2');}
-function tapFry(i){const F=FRY[i];moveChef(F.x+F.w/2);
-  if(G.fry[i]){say(FRIED[F.k].name+'を揚げ中…');return;}
-  if(G.rack.filter(r=>r.k===F.k).length>=4){say('バットが満杯');SE.buzz();return;}
-  G.fry[i]={k:F.k,t:0};SE.fry();pop(F.x+26,F.y-2,FRIED[F.k].name+' 投入','#f2e3c2');}
+function tapFry(i){const F=FRYG[i];moveChef(F.x+F.w/2);
+  if(G.fry[i].length>=2){say(FRIED[F.k].name+'は2個揚げ中！');SE.buzz();return;}
+  if(G.rack.filter(r=>r.k===F.k).length+G.fry[i].length>=4){say('ストックが満杯');SE.buzz();return;}
+  G.fry[i].push({k:F.k,t:0});SE.fry();pop(F.x+26,F.y-2,FRIED[F.k].name+' 投入','#f2e3c2');}
 function tapCust(i){const c=G.custs[i];if(!c)return;const D=DISHES[c.dish];
   if(c.dish==='onigiri'){
     if(G.onigiri<=0){say('おにぎりを握って！');SE.buzz();return;}
@@ -368,10 +368,10 @@ function tapCust(i){const c=G.custs[i];if(!c)return;const D=DISHES[c.dish];
       else if(D.need==='tamago'){if(G.tamago<=0){say('卵を用意して！');SE.buzz();return;}}
       else{if(!G.rack.filter(r=>r.k===D.need).length){say(FRIED[D.need].name+'を揚げて！');SE.buzz();return;}}
     }
-    let ou=-1,ua=-1;G.udon.forEach((b,j)=>{if(b.age>ua){ua=b.age;ou=j;}});G.udon.splice(ou,1);
+    let ou=-1,ua=-1;G.udon.forEach((b,j)=>{if(b.age>ua){ua=b.age;ou=j;}});G.udon.splice(ou,1);   // 最古から
     if(D.need==='age')G.age--;
     else if(D.need==='tamago')G.tamago--;
-    else if(D.need){let old=-1,age=-1;G.rack.forEach((r,j)=>{if(r.k===D.need&&r.age>age){age=r.age;old=j;}});G.rack.splice(old,1);}
+    else if(D.need){let old=-1,age=-1;G.rack.forEach((r,j)=>{if(r.k===D.need&&r.age>age){age=r.age;old=j;}});G.rack.splice(old,1);}  // 同種の最古から
   }
   G.money+=D.price;G.served++;G.combo++;G.maxCombo=Math.max(G.maxCombo,G.combo);repAdd(4+Math.round(c.p/c.maxP*6));
   const bonus=G.combo>=3?Math.round(D.price*0.1*Math.min(G.combo-2,8)):0;G.money+=bonus;
@@ -386,29 +386,32 @@ cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();
   if(state==='result'){if(stateAge()>1){setState('title');SE.take();playBGM('title');}return;}
   G.rip={x:a,y:b,t:0};
   KAMA.forEach((kk,i)=>{if(a>=kk.x&&a<kk.x+kk.w&&b>=kk.y-14&&b<kk.y+kk.h+6)tapKama(i);});
+  FRYG.forEach((ff,i)=>{if(a>=ff.x&&a<ff.x+ff.w&&b>=ff.y-14&&b<ff.y+ff.h+6)tapFry(i);});
   if(a>=EGG.x&&a<EGG.x+EGG.w&&b>=EGG.y-14&&b<EGG.y+EGG.h+6)tapEgg();
   if(a>=AGE.x&&a<AGE.x+AGE.w&&b>=AGE.y-14&&b<AGE.y+AGE.h+6)tapAge();
   if(a>=ONIG.x&&a<ONIG.x+ONIG.w&&b>=ONIG.y-14&&b<ONIG.y+ONIG.h+6)tapOnig();
-  FRY.forEach((ff,i)=>{if(a>=ff.x&&a<ff.x+ff.w&&b>=ff.y-14&&b<ff.y+ff.h+6)tapFry(i);});
   CUSTX.forEach((cx,i)=>{if(a>=cx-2&&a<cx+88&&b>=CARDY-6&&b<COUNTER+16)tapCust(i);});
 });
 /* ============================ 描画 ============================ */
 function machine(X,Y,Wd,Hd,liquid){
   rct(X,Y,Wd,Hd-8,'#55606e');rct(X+3,Y-4,Wd-6,6,'#6a7686');rct(X+3,Y-5,Wd-6,1,'#7e8a9a');
   rct(X+5,Y-2,Wd-10,4,liquid);}
+function stockPanel(z,label,on){
+  rct(z.x-3,z.y-3,z.w+6,z.h+2,'#3a2c1e');rct(z.x-3,z.y-3,z.w+6,2,'#5a4430');
+  txt(label,z.x,z.y-16,8,on?'#f2e3c2':'#7a705c');}
 function drawPlay(t){
   x.drawImage(BG,0,0);
-  /* ==== 客（カウンター着席・脚はカウンターに隠れる） ==== */
+  /* 客 */
   G.custs.forEach((c,i)=>{if(!c)return;const cx=CUSTX[i];const D=DISHES[c.dish];const bob=Math.sin(t*3+c.ph)*1.4;
     rct(cx,CARDY,84,36,'#1b1a2e');rct(cx+1,CARDY+1,82,34,'#f6ecd8');
-    rct(cx+1,CARDY+1,5,34,D.col);                       // メニュー色帯（読まずに判別）
+    rct(cx+1,CARDY+1,5,34,D.col);
     drawBowl(cx+8,CARDY+8,c.dish,1.3);
     txt(D.name,cx+40,CARDY+4,10,'#241a10','left');
     const rr=c.p/c.maxP;barUI(cx+1,CARDY+32,82,3,rr,rr>0.5?'#7fae5a':rr>0.25?'#e8b452':'#e0604a');
     spr(CUST[((t*1.8+c.ph)|0)%2],cx+24,CUSTY+bob,{k:'#1b1a2e',h:c.v.h,S:'#f0c9a0',e:'#3a2418',m:'#c07858',b:c.v.b},2.2);
   });
-  counterBand();   // 客の腰から下を隠す＝カウンターに着いている見た目
-  /* ==== HUD（2段） ==== */
+  counterBand();
+  /* HUD */
   rct(0,0,W,7,'rgba(20,16,10,0.55)');
   const mm=Math.max(0,G.left),m2=(mm/60)|0,s2=('0'+((mm|0)%60)).slice(-2);
   txt('のこり '+m2+':'+s2,6,-1,11,G.left<15&&((t*3)|0)%2?'#e0604a':'#f2e3c2');
@@ -417,91 +420,89 @@ function drawPlay(t){
     x.fillRect(122+i*11,1,2,2);x.fillRect(120+i*11,3,6,2);x.fillRect(121+i*11,5,4,1);}
   if(G.combo>=3)txt('連続×'+G.combo,196,-1,9,'#7fae5a','left');
   txt('廃棄'+G.waste,258,-1,9,'#c8b890','left');
-  /* ==== 調理器具 ==== */
+  /* ==== 1段目: 釜×3 → うどんストック ==== */
   G.kama.forEach((k,i)=>{const K=KAMA[i];machine(K.x,K.y,K.w,K.h,'#20283a');
     const ready=k.st==='boil'&&k.t>=CFG.boil;
-    if(k.st==='boil'){x.fillStyle='#c8d8e8';for(let bb=0;bb<6;bb++){const bx=K.x+8+((bb*9+((t*10)|0)*3)%(K.w-16));x.fillRect(bx,K.y-1+((bb*3+((t*8)|0))%4),2,2);}
-      if(ready){x.fillStyle='#f6ecd8';for(let m=0;m<6;m++)x.fillRect(K.x+9+m*7,K.y+1+(m%2)*2,5,2);}
+    if(k.st==='boil'){x.fillStyle='#c8d8e8';for(let bb=0;bb<5;bb++){const bx=K.x+7+((bb*9+((t*10)|0)*3)%(K.w-14));x.fillRect(bx,K.y-1+((bb*3+((t*8)|0))%4),2,2);}
+      if(ready){x.fillStyle='#f6ecd8';for(let m=0;m<5;m++)x.fillRect(K.x+8+m*7,K.y+1+(m%2)*2,5,2);}
       barUI(K.x+4,K.y+K.h-11,K.w-8,4,k.t/(CFG.boil+CFG.golden),ready?'#e8b44a':'#7fae5a');
       if(ready){x.strokeStyle=((t*5)|0)%2?'#f0c86a':'#e8b44a';x.lineWidth=2;x.strokeRect(K.x-1,K.y-6,K.w+2,K.h);txt('湯切り!',K.x+K.w/2,K.y-15,8,'#f0c86a','center');}}});
+  txt('ゆで釜',KAMA[0].x,EQY1-16,8,'#c8b890');
+  stockPanel(UDONZ,'うどんストック',G.udon.length>0);
+  G.udon.slice(0,5).forEach((u,i)=>{const a=UDONZ.x+3+i*33,b=UDONZ.y+8;drawBowl(a,b,'kake',1.2);
+    barUI(a,b+17,25,2,1-u.age/CFG.nobi,u.age<CFG.nobi*0.6?'#7fae5a':'#e0604a');});
+  if(!G.udon.length)txt('からっぽ',UDONZ.x+8,UDONZ.y+16,8,'#5a4a34');
+  /* ==== 2段目: フライヤー各台 → 各ストック ==== */
+  G.fry.forEach((arr,i)=>{const F=FRYG[i];machine(F.x,F.y,F.w,F.h,'#5a4416');
+    txt(FRIED[F.k].name,F.x+F.w/2,F.y-16,8,'#c8b890','center');
+    arr.forEach((fj,j)=>{
+      x.fillStyle='#e8b44a';for(let bb=0;bb<3;bb++){const bx=F.x+7+j*22+((bb*7+((t*12)|0)*4)%16);x.fillRect(bx,F.y-1+((bb*3+((t*9)|0))%4),2,2);}
+      drawTen(F.x+6+j*22,F.y+4+j*6,F.k,1.1);
+      barUI(F.x+4,F.y+F.h-11+j*5,F.w-8,3,fj.t/FRIED[F.k].fry,'#e8b44a');});
+    const st=G.rack.filter(r=>r.k===F.k);
+    stockPanel({x:F.sx,y:F.y,w:F.sw,h:F.h},'ストック'+(st.length?st.length:''),st.length>0);
+    st.slice(0,4).forEach((r,n)=>{const a=F.sx+2+(n%2)*26,b=F.y+4+((n/2)|0)*20;
+      drawTen(a,b,F.k,1.3);
+      barUI(a,b+11,20,2,1-r.age/FRIED[F.k].fresh,r.age<FRIED[F.k].fresh*0.6?'#7fae5a':'#e0604a');});
+  });
+  /* ==== 3段目: 卵台・煮込み鍋・おにぎり台（各＋ストック） ==== */
   rct(EGG.x,EGG.y,EGG.w,EGG.h-8,'#6e4a2b');rct(EGG.x+2,EGG.y+2,EGG.w-4,EGG.h-14,'#8a5a2e');
-  for(let n=0;n<3;n++)drawEgg(EGG.x+6+n*11,EGG.y+8,1.2);
+  for(let n=0;n<3;n++)drawEgg(EGG.x+6+n*13,EGG.y+10,1.2);
+  txt('卵台',EGG.x+EGG.w/2,EQY3-16,8,'#c8b890','center');
+  stockPanel(EGGZ,'卵'+(G.tamago||''),G.tamago>0);
+  for(let n=0;n<G.tamago;n++)drawEgg(EGGZ.x+3+(n%3)*13,EGGZ.y+6+((n/3)|0)*14,1.3);
   machine(AGE.x,AGE.y,AGE.w,AGE.h,'#5a4416');
   if(G.ageSim!=null){for(let bb=0;bb<4;bb++){x.fillStyle='#c8a050';const bx=AGE.x+9+((bb*9+((t*8)|0)*3)%(AGE.w-18));x.fillRect(bx,AGE.y-1+((bb*3+((t*7)|0))%4),2,2);}
-    drawAge(AGE.x+16,AGE.y+5,1.6);barUI(AGE.x+4,AGE.y+AGE.h-11,AGE.w-8,4,G.ageSim/CFG.ageSim,'#e8b44a');
-  } else drawAge(AGE.x+16,AGE.y+8,1.6);
-  G.fry.forEach((fj,i)=>{const F=FRY[i];machine(F.x,F.y,F.w,F.h,'#5a4416');
-    txt(FRIED[F.k].name,F.x+F.w/2,F.y-14,8,'#c8b890','center');
-    if(fj){x.fillStyle='#e8b44a';for(let bb=0;bb<5;bb++){const bx=F.x+8+((bb*9+((t*12)|0)*4)%(F.w-16));x.fillRect(bx,F.y-1+((bb*3+((t*9)|0))%4),2,2);}
-      drawTen(F.x+18,F.y+3,F.k,1.6);barUI(F.x+4,F.y+F.h-11,F.w-8,4,fj.t/FRIED[F.k].fry,'#e8b44a');}});
-  /* おにぎり台 */
+    drawAge(AGE.x+16,AGE.y+6,1.5);barUI(AGE.x+4,AGE.y+AGE.h-11,AGE.w-8,4,G.ageSim/CFG.ageSim,'#e8b44a');
+  } else drawAge(AGE.x+16,AGE.y+10,1.5);
+  txt('煮込み鍋',AGE.x+AGE.w/2,EQY3-16,8,'#c8b890','center');
+  stockPanel(AGEZ,'油揚げ'+(G.age||''),G.age>0);
+  for(let n=0;n<G.age;n++)drawAge(AGEZ.x+3+(n%2)*20,AGEZ.y+6+((n/2)|0)*12,1.3);
   rct(ONIG.x,ONIG.y,ONIG.w,ONIG.h-8,'#6e4a2b');rct(ONIG.x+2,ONIG.y+2,ONIG.w-4,ONIG.h-14,'#8a5a2e');
-  drawOnigiri(ONIG.x+10,ONIG.y+8,2);
-  /* 器具ラベル */
-  txt('卵台',EGG.x+EGG.w/2,EGG.y-16,8,'#c8b890','center');
-  txt('煮込み鍋',AGE.x+AGE.w/2,AGE.y-16,8,'#c8b890','center');
-  txt('おにぎり台',ONIG.x+ONIG.w/2,ONIG.y-16,8,'#c8b890','center');
-  /* ==== 大将（器具の手前の通路・器具に重ならない） ==== */
+  drawOnigiri(ONIG.x+13,ONIG.y+8,2);
+  txt('おにぎり台',ONIG.x+ONIG.w/2,EQY3-16,8,'#c8b890','center');
+  stockPanel(ONIGZ,'おにぎり'+(G.onigiri||''),G.onigiri>0);
+  for(let n=0;n<G.onigiri;n++)drawOnigiri(ONIGZ.x+3+(n%3)*17,ONIGZ.y+6+((n/3)|0)*16,1.2);
+  /* 大将（カウンターと器具の間の通路） */
   spr(CHEF[G.chefF],G.chefX-13,STAFFY,CHEF_PAL,1.3);
-  /* ==== 置き場 ==== */
-  rct(UDONZ.x-4,UDONZ.y-4,UDONZ.w,36,'#3a2c1e');rct(UDONZ.x-4,UDONZ.y-4,UDONZ.w,2,'#5a4430');
-  txt('うどん',UDONZ.x,UDONZ.y-15,8,'#c8b890');
-  G.udon.slice(0,6).forEach((u,i)=>{const a=UDONZ.x+i*33,b=UDONZ.y;drawBowl(a,b,'kake',1.25);
-    barUI(a,b+18,26,2,1-u.age/CFG.nobi,u.age<CFG.nobi*0.6?'#7fae5a':'#e0604a');});
-  if(!G.udon.length)txt('からっぽ',UDONZ.x+6,UDONZ.y+8,8,'#5a4a34');
-  rct(EGGZ.x-4,EGGZ.y-4,EGGZ.w,36,'#3a2c1e');rct(EGGZ.x-4,EGGZ.y-4,EGGZ.w,2,'#5a4430');
-  txt('卵'+G.tamago,EGGZ.x,EGGZ.y-15,8,G.tamago?'#f2e3c2':'#5a4a34');
-  for(let n=0;n<G.tamago;n++)drawEgg(EGGZ.x+2+(n%3)*13,EGGZ.y+3+((n/3)|0)*12,1.4);
-  rct(AGEZ.x-4,AGEZ.y-4,AGEZ.w,36,'#3a2c1e');rct(AGEZ.x-4,AGEZ.y-4,AGEZ.w,2,'#5a4430');
-  txt('油揚げ'+G.age,AGEZ.x,AGEZ.y-15,8,G.age?'#f2e3c2':'#5a4a34');
-  for(let n=0;n<G.age;n++)drawAge(AGEZ.x+2+(n%2)*14,AGEZ.y+3+((n/2)|0)*11,1.4);
-  rct(ONIGZ.x-4,ONIGZ.y-4,ONIGZ.w,36,'#3a2c1e');rct(ONIGZ.x-4,ONIGZ.y-4,ONIGZ.w,2,'#5a4430');
-  txt('おにぎり'+G.onigiri,ONIGZ.x,ONIGZ.y-15,8,G.onigiri?'#f2e3c2':'#5a4a34');
-  for(let n=0;n<G.onigiri;n++)drawOnigiri(ONIGZ.x+(n%3)*15,ONIGZ.y+2+((n/3)|0)*14,1.1);
-  rct(RACKZ.x-4,RACKZ.y-4,RACKZ.w,36,'#3a2c1e');rct(RACKZ.x-4,RACKZ.y-4,RACKZ.w,2,'#5a4430');
-  txt('天ぷらバット',RACKZ.x,RACKZ.y-15,8,'#c8b890');
-  G.rack.slice(0,7).forEach((r,i)=>{const a=RACKZ.x+i*30,b=RACKZ.y+3;drawTen(a,b,r.k,1.7);
-    barUI(a,b+19,20,2,1-r.age/FRIED[r.k].fresh,r.age<FRIED[r.k].fresh*0.6?'#7fae5a':'#e0604a');});
-  if(!G.rack.length)txt('からっぽ',RACKZ.x+6,RACKZ.y+8,8,'#5a4a34');
-  /* 湯気 */
+  /* 湯気・波紋・ポップ・メッセージ */
   G.steam.forEach(s=>{x.fillStyle='rgba(240,246,255,'+(0.5*(1-s.t/1.6))+')';x.fillRect((s.x+Math.sin(s.t*5)*2)|0,s.y|0,s.t<0.9?1:2,1);});
   if(G.rip&&G.rip.t<1){x.strokeStyle='rgba(240,200,106,'+(1-G.rip.t)+')';x.lineWidth=1.5;x.beginPath();x.arc(G.rip.x,G.rip.y,4+G.rip.t*16,0,7);x.stroke();}
   G.pops.forEach(pp=>{x.globalAlpha=Math.max(0,1-pp.t/1.3);txt(pp.s,pp.x,pp.y-pp.t*14,pp.big?12:9,pp.c,'center');x.globalAlpha=1;});
-  if(G.msgT>0)txt('⚠ '+G.msg,W/2,H-14,10,'#e0604a','center');
+  if(G.msgT>0)txt('⚠ '+G.msg,W/2,H-16,10,'#e0604a','center');
 }
 function drawTitle(t){
   x.drawImage(BG,0,0);rct(0,0,W,H,'rgba(11,9,6,0.44)');
-  txt('うどん繁盛記',W/2,140,30,'#e8b44a','center');
-  txt('― カウンターの中は、いつも戦場 ―',W/2,182,10,'#c8b890','center');
-  const lines=['釜=うどん / 卵台 / 煮込み鍋=油揚げ','フライヤー=天ぷら / おにぎり台',
-    'メニューごとに必要な一手が違う。段取りが命。'];
-  lines.forEach((s,i)=>txt(s,W/2,208+i*16,10,i===2?'#e8b44a':'#a89878','center'));
-  DKEYS.forEach((k,i)=>{const bx=34+(i%4)*82,by=272+((i/4)|0)*66;drawBowl(bx,by,k,1.3);
+  txt('うどん繁盛記',W/2,104,28,'#e8b44a','center');
+  txt('― カウンターの中は、いつも戦場 ―',W/2,142,10,'#c8b890','center');
+  const lines=['釜=うどん / 卵台 / 煮込み鍋=油揚げ','フライヤー=天ぷら(2個同時OK) / おにぎり台',
+    '器具のすぐ隣が、そのストック置き場。'];
+  lines.forEach((s,i)=>txt(s,W/2,166+i*15,10,i===2?'#e8b44a':'#a89878','center'));
+  DKEYS.forEach((k,i)=>{const bx=34+(i%4)*82,by=224+((i/4)|0)*62;drawBowl(bx,by,k,1.3);
     txt(DISHES[k].name,bx+14,by+20,8,'#f2e3c2','center');txt('¥'+DISHES[k].price,bx+14,by+31,7,'#c8a060','center');});
-  if(((t*2)|0)%2)txt('▶ タップして開店',W/2,436,14,'#e8b44a','center');
-  txt('自己ベスト ¥'+best.toLocaleString(),W/2,470,10,'#c8b890','center');
-  txt('BGM: Juhani Junkala (CC0)／声: 効果音ラボ／Font: PixelMplus',W/2,592,7,'#7a705c','center');
+  if(((t*2)|0)%2)txt('▶ タップして開店',W/2,378,14,'#e8b44a','center');
+  txt('自己ベスト ¥'+best.toLocaleString(),W/2,410,10,'#c8b890','center');
+  txt('声: 効果音ラボ／Font: PixelMplus',W/2,478,7,'#7a705c','center');
 }
 function drawResult(t){
   x.drawImage(BG,0,0);rct(0,0,W,H,'rgba(11,9,6,0.68)');
-  txt(closed?'閉  店  …':'営業終了！',W/2,90,24,closed?'#e0604a':'#e8b44a','center');
+  txt(closed?'閉  店  …':'営業終了！',W/2,60,24,closed?'#e0604a':'#e8b44a','center');
   const rows=[['売上','¥'+G.money.toLocaleString()],['提供',G.served+'人'],
     ['帰ってしまった',G.gone+'人'],['廃棄',G.waste+'品'],
     ['最大連続',G.maxCombo+'人'],['最終評判',Math.round(G.rep)+' / 100']];
-  rows.forEach((r,i)=>{txt(r[0],46,150+i*24,10,'#8b90a8');txt(String(r[1]),314,150+i*24,10,'#f2e3c2','right');});
-  /* S＝ほぼ完璧のみ: 売上13,000以上＋離脱0＋廃棄1以下 */
+  rows.forEach((r,i)=>{txt(r[0],46,116+i*22,10,'#8b90a8');txt(String(r[1]),314,116+i*22,10,'#f2e3c2','right');});
   let rank='C',msg='まずは一杯ずつ、確実に。';
   if(!closed){
     if(G.money>=13000&&G.gone===0&&G.waste<=1){rank='S';msg='完璧な仕事…伝説の釜番だ！！';}
     else if(G.money>=8500){rank='A';msg='昼のピークも任せられる！';}
     else if(G.money>=5000){rank='B';msg='いい手際。段取りが光る。';}}
   else{rank='D';msg='また明日、のれんを出そう。';}
-  txt('ランク',W/2,310,10,'#8b90a8','center');
-  txt(rank,W/2,322,36,rank==='S'?'#e8b44a':rank==='A'?'#7fae5a':'#f2e3c2','center');
-  if(rank==='A')txt('S条件: 売上13,000＋離脱0人＋廃棄1品以下',W/2,372,8,'#8b90a8','center');
-  txt(msg,W/2,390,10,'#c8b890','center');
-  if(G.money>=best&&G.money>0)txt('★自己ベスト更新！',W/2,414,10,'#e8b44a','center');
-  if(stateAge()>1&&((t*2)|0)%2)txt('▶ タップでもういちど',W/2,450,11,'#e8b44a','center');
+  txt('ランク',W/2,262,10,'#8b90a8','center');
+  txt(rank,W/2,274,34,rank==='S'?'#e8b44a':rank==='A'?'#7fae5a':'#f2e3c2','center');
+  if(rank==='A')txt('S条件: 売上13,000＋離脱0人＋廃棄1品以下',W/2,320,8,'#8b90a8','center');
+  txt(msg,W/2,338,10,'#c8b890','center');
+  if(G.money>=best&&G.money>0)txt('★自己ベスト更新！',W/2,362,10,'#e8b44a','center');
+  if(stateAge()>1&&((t*2)|0)%2)txt('▶ タップでもういちど',W/2,396,11,'#e8b44a','center');
 }
 /* ============================ ループ ============================ */
 let last=performance.now(),elT=0;
